@@ -1,0 +1,41 @@
+# Alibaba Cloud Function Compute (FC) Deployment Template
+# Install Serverless Devs: npm install @serverless-devs/s -g
+# Deploy: s deploy
+
+edition: 3.0.0
+name: model-detective
+access: default
+
+vars:
+  region: cn-hangzhou
+  service:
+    name: model-detective-service
+    description: Model Detective - API中转站检测与模型能力测评
+
+resources:
+  model_detective:
+    component: fc3
+    props:
+      region: ${vars.region}
+      service: ${vars.service}
+      functionName: model-detective
+      description: Model Detective Flask应用
+      runtime: python3.10
+      code: ./
+      handler: aliyun_fc_app.handler
+      memorySize: 512
+      timeout: 60
+      environmentVariables:
+        FLASK_ENV: production
+        PYTHONPATH: /opt/python
+      triggers:
+        - triggerName: http-trigger
+          triggerType: http
+          triggerConfig:
+            authType: anonymous
+            methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
