@@ -29,8 +29,9 @@ resources:
       runtime: python3.10
       code: ./
       handler: aliyun_fc_app.handler
-      memorySize: 512
-      timeout: 60
+      # 内存和超时配置 - 支持 Full Test
+      memorySize: 1024  # 1GB 内存，提升并发处理能力
+      timeout: 300      # 5分钟超时，支持 Full Test（约2-5分钟）
       environmentVariables:
         FLASK_ENV: production
         PYTHONPATH: /opt/python
