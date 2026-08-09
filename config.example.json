@@ -1,0 +1,23 @@
+{
+  "providers": {
+    "my-proxy": {
+      "base_url": "https://api.example.com/v1",
+      "api_key": "sk-your-api-key-here",
+      "models": ["gpt-4o", "claude-sonnet-4-5", "gemini-2.5-flash"]
+    },
+    "official-openai": {
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "sk-official-key",
+      "models": ["gpt-4o"]
+    },
+    "official-anthropic": {
+      "base_url": "https://api.anthropic.com",
+      "api_key": "sk-ant-official-key",
+      "models": ["claude-sonnet-4-5"]
+    }
+  },
+  "defaults": {
+    "mode": "standard",
+    "protocol": "auto"
+  }
+}

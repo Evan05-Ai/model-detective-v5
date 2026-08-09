@@ -1,0 +1,20 @@
+# Auto-detect text files, normalize line endings
+* text=auto
+
+# Source files
+*.py text
+*.js text
+*.css text
+*.html text
+*.md text
+*.json text
+*.txt text
+*.bat text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary

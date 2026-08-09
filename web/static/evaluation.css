@@ -1,0 +1,445 @@
+/* ============================================================
+   Model Detective — Evaluation Page Styles
+   模型测评页面专用样式
+   ============================================================ */
+
+/* Hero Section Adjustments for Evaluation Page */
+.eval-hero {
+  min-height: auto;
+  padding: 120px 2rem 4rem;
+}
+
+.eval-hero .hero-title {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+}
+
+/* Dimensions Section */
+.dimensions-section {
+  padding: 3rem 2rem;
+  background: linear-gradient(180deg, transparent 0%, rgba(179,136,255,0.03) 50%, transparent 100%);
+}
+
+.dimensions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.dimension-card {
+  padding: 2rem 1.5rem;
+  background: var(--bg-1);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  text-align: center;
+  transition: all var(--t);
+  position: relative;
+  overflow: hidden;
+}
+
+.dimension-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+}
+
+/* 维度卡片鼠标跟随光晕 */
+.dimension-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(179,136,255,0.07), transparent 40%);
+  opacity: 0;
+  transition: opacity var(--t);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dimension-card:hover::after {
+  opacity: 1;
+}
+
+.dimension-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--purple);
+  box-shadow: var(--shadow), 0 0 40px rgba(179,136,255,0.1);
+}
+
+.dimension-icon {
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--grad-aurora);
+  border-radius: 50%;
+  font-size: 2rem;
+  margin: 0 auto 1.5rem;
+}
+
+.dimension-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+.dimension-desc {
+  font-size: 0.95rem;
+  color: var(--txt-2);
+  line-height: 1.6;
+  margin-bottom: 1.25rem;
+}
+
+.dimension-questions {
+  display: inline-block;
+  padding: 0.4rem 1rem;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 100px;
+  font-size: 0.85rem;
+  color: var(--purple);
+  font-weight: 600;
+}
+
+/* Evaluation Config Section */
+.eval-config-section {
+  padding: 2rem 2rem;
+}
+
+.eval-config-card {
+  max-width: 900px;
+  margin: 0 auto;
+  background: var(--bg-1);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow), var(--shadow-inset);
+}
+
+.eval-config-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+}
+
+.eval-step {
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.eval-step:last-child {
+  border-bottom: none;
+}
+
+.eval-step-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem 2rem;
+  background: linear-gradient(180deg, var(--glass-2), transparent);
+}
+
+.eval-step-number {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--grad-aurora);
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 1rem;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.eval-step-header h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  flex: 1;
+}
+
+.eval-step-body {
+  padding: 1.5rem 2rem 2rem;
+}
+
+/* Evaluation Sections */
+.eval-section {
+  margin-bottom: 2rem;
+}
+
+.eval-section:last-child {
+  margin-bottom: 0;
+}
+
+.eval-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--txt-2);
+  margin-bottom: 1rem;
+}
+
+.eval-section-title .icon {
+  font-size: 1.1rem;
+}
+
+/* Dimension Checkboxes */
+.eval-dimensions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.eval-dim-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 100px;
+  cursor: pointer;
+  transition: all var(--t);
+  font-size: 0.9rem;
+}
+
+.eval-dim-checkbox:hover {
+  background: var(--glass-2);
+  border-color: var(--glass-border-2);
+}
+
+.eval-dim-checkbox.checked {
+  background: rgba(179,136,255,0.15);
+  border-color: var(--purple);
+  color: var(--purple);
+}
+
+.eval-dim-checkbox input[type="checkbox"] {
+  display: none;
+}
+
+/* Difficulty Options */
+.eval-difficulty-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.eval-difficulty-option {
+  padding: 1.25rem;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--t);
+  text-align: center;
+}
+
+.eval-difficulty-option:hover {
+  background: var(--glass-2);
+  border-color: var(--glass-border-2);
+}
+
+.eval-difficulty-option.active {
+  background: rgba(91,142,255,0.15);
+  border-color: var(--blue);
+}
+
+.eval-difficulty-option .diff-label {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.eval-difficulty-option .diff-desc {
+  font-size: 0.85rem;
+  color: var(--txt-2);
+  margin-bottom: 0.25rem;
+}
+
+.eval-difficulty-option .diff-time {
+  font-size: 0.8rem;
+  color: var(--txt-3);
+}
+
+/* Summary Box */
+.summary-box {
+  padding: 1.25rem;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1.5rem;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.summary-row:last-child {
+  border-bottom: none;
+}
+
+.summary-label {
+  color: var(--txt-2);
+}
+
+.summary-value {
+  font-weight: 600;
+  color: var(--txt-1);
+}
+
+/* Models Input */
+.eval-models-input {
+  width: 100%;
+  min-height: 100px;
+  padding: 1rem;
+  background: var(--bg-0);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--txt-1);
+  font-family: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+  transition: border-color var(--t);
+}
+
+.eval-models-input:focus {
+  outline: none;
+  border-color: var(--purple);
+}
+
+.eval-models-input::placeholder {
+  color: var(--txt-4);
+}
+
+/* Progress */
+.progress-bar {
+  height: 8px;
+  background: var(--glass);
+  border-radius: 100px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--grad-aurora);
+  border-radius: 100px;
+  transition: width 0.3s ease;
+}
+
+.progress-info {
+  text-align: center;
+  color: var(--txt-2);
+  font-size: 0.95rem;
+}
+
+/* Results */
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.results-json {
+  padding: 1.5rem;
+  background: var(--bg-0);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Status dots */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.5rem;
+}
+
+.status-dot.success {
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+}
+
+.status-dot.error {
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+}
+
+.status-dot.probing {
+  background: var(--yellow);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Navigation Tab as Link */
+.nav-tab {
+  text-decoration: none;
+}
+
+/* 触摸设备优化 */
+@media (hover: none) and (pointer: coarse) {
+  .dimension-card::after {
+    display: none !important;
+  }
+
+  .dimension-card:hover {
+    transform: none;
+  }
+
+  .eval-dim-checkbox,
+  .eval-difficulty-option {
+    min-height: 44px;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .eval-hero {
+    min-height: auto;
+    padding: 80px 1rem 2rem;
+  }
+  
+  .dimensions-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .dimension-card {
+    padding: 1.5rem;
+  }
+  
+  .eval-step-header,
+  .eval-step-body {
+    padding: 1rem 1.5rem;
+  }
+  
+  .eval-difficulty-row {
+    grid-template-columns: 1fr;
+  }
+}

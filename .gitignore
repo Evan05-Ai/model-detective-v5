@@ -1,0 +1,111 @@
+# =====================
+# Python
+# =====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# =====================
+# IDE / Editor / AI assistants
+# =====================
+.idea/
+.vscode/
+.codebuddy/
+.workbuddy/
+.cursor/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# =====================
+# Server logs & runtime
+# =====================
+server.log
+server.err
+*.log
+
+# =====================
+# Test output & reports (not part of source)
+# =====================
+# HTML reports
+*_report.html
+*_report_v2.html
+*_verify.html
+*_billing.html
+*_cross_validation_report.html
+*_final.html
+*_test3.html
+*_test4.html
+
+# Text output files
+*_output.txt
+*_output2.txt
+output_*.txt
+detect_output*.txt
+test_results.txt
+core_summary.md
+
+# JSON result files (test run outputs)
+model-detective-*.json
+model-evaluation-*.json
+
+# =====================
+# Screenshots & images (test artifacts)
+# =====================
+image.png
+image copy*.png
+截图*.png
+upload_*.jpg
+fee99ed97e9c7fe32e5752a3f5fe4050.png
+
+# PDF (test-generated)
+*.pdf
+
+# =====================
+# Internal development docs (not for public release)
+# =====================
+MEMORY.md
+MEMORY.md.backup
+HANDOVER.md
+STARTUP_PROMPT.md
+STARTUP_GUIDE.md
+FUSION_PLAN.md
+execution_guide.md
+scoring_sheet.md
+test_framework.md
+visualization_template.md
+docs/DEEP_SELF_AUDIT_v2.7.md
+docs/SELF_AUDIT_v27.md
+docs/KIRO_RESEARCH_REPORT.md
+docs/LIGHTWEIGHT_MODEL_EXECUTION_PLAN.md
+
+# =====================
+# Temporary / scratch test scripts
+# =====================
+_test_identity.py
+_v1_verify.py
+_v2_selfcheck.py
+scripts/billing_audit_result.txt
+
+# =====================
+# OS-specific
+# =====================
+.DS_Store
+desktop.ini

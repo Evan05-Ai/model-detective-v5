@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模型测评 — Model Detective</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧪</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=COSMIC_V5_1_20260804">
+    <link rel="stylesheet" href="/static/evaluation.css?v=COSMIC_V5_1_20260804">
+</head>
+<body>
+<canvas id="star-canvas"></canvas>
+<div class="scroll-progress" id="scroll-progress"></div>
+<div id="app">
+
+<!-- ===== Navigation Bar ===== -->
+<nav class="navbar">
+    <div class="nav-brand">
+        <div class="nav-logo">M</div>
+        <span class="nav-title">Model Detective</span>
+    </div>
+    <div class="nav-tabs">
+        <a href="/" class="nav-tab">
+            <span class="nav-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></span>
+            <span class="nav-tab-text">API 检测</span>
+        </a>
+        <a href="/evaluation" class="nav-tab active">
+            <span class="nav-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>
+            <span class="nav-tab-text">模型测评</span>
+        </a>
+    </div>
+    <div class="nav-actions">
+        <a href="https://github.com" target="_blank" class="nav-link" title="GitHub">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        </a>
+    </div>
+</nav>
+
+<!-- ===== Hero Section ===== -->
+<header class="hero-section eval-hero">
+    <div class="hero-particles" id="hero-particles"></div>
+    <div class="hero-aurora"></div>
+    <div class="hero-content-wrapper">
+        <div class="hero-badge">
+            <span class="badge-dot"></span>
+            <span>v5.1 Cosmic Galaxy</span>
+        </div>
+        <h1 class="hero-title">
+            <span class="gradient-text">模型能力测评</span>
+        </h1>
+        <p class="hero-subtitle">
+            5 大维度 · 标准化题库 · 专业报告
+            <br>全面评估 AI 模型的真实能力水平
+        </p>
+        <div class="hero-cta">
+            <button class="btn-cta-primary" onclick="scrollToEvalConfig()" type="button">
+                <span>🚀</span> 开始测评
+            </button>
+            <a href="/" class="btn-cta-secondary">
+                <span>🔍</span> 返回检测
+            </a>
+        </div>
+        
+        <!-- Stats Bar -->
+        <div class="hero-stats-bar">
+            <div class="stat-item">
+                <div class="stat-number">5</div>
+                <div class="stat-label">测评维度</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+                <div class="stat-number">100</div>
+                <div class="stat-label">测评题目</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+                <div class="stat-number">3</div>
+                <div class="stat-label">难度模式</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+                <div class="stat-number">0</div>
+                <div class="stat-label">完全免费</div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- ===== Dimensions Section ===== -->
+<section class="dimensions-section" id="dimensions-section">
+    <div class="section-header">
+        <span class="section-tag">测评维度</span>
+        <h2 class="section-title">五大维度全面评估</h2>
+        <p class="section-desc">从基础语言到边界测试，多维度深入测评模型能力</p>
+    </div>
+    <div class="dimensions-grid">
+        <div class="dimension-card">
+            <div class="dimension-icon">📝</div>
+            <h3 class="dimension-title">基础语言</h3>
+            <p class="dimension-desc">翻译、摘要、改写、情感分析等基础语言处理能力</p>
+            <div class="dimension-questions">20 题</div>
+        </div>
+        <div class="dimension-card">
+            <div class="dimension-icon">💻</div>
+            <h3 class="dimension-title">技术能力</h3>
+            <p class="dimension-desc">代码生成、调试、算法实现等技术编程能力</p>
+            <div class="dimension-questions">20 题</div>
+        </div>
+        <div class="dimension-card">
+            <div class="dimension-icon">🧠</div>
+            <h3 class="dimension-title">高级认知</h3>
+            <p class="dimension-desc">推理、规划、多步决策等高级思维能力</p>
+            <div class="dimension-questions">20 题</div>
+        </div>
+        <div class="dimension-card">
+            <div class="dimension-icon">🛠️</div>
+            <h3 class="dimension-title">实用能力</h3>
+            <p class="dimension-desc">角色扮演、格式控制、多轮对话等实用场景</p>
+            <div class="dimension-questions">20 题</div>
+        </div>
+        <div class="dimension-card">
+            <div class="dimension-icon">🛡️</div>
+            <h3 class="dimension-title">边界鲁棒</h3>
+            <p class="dimension-desc">幻觉检测、越狱防护、一致性等边界测试</p>
+            <div class="dimension-questions">20 题</div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== Evaluation Config Section ===== -->
+<section class="eval-config-section" id="eval-config">
+    <div class="container">
+        <div class="section-header">
+            <span class="section-tag">开始测评</span>
+            <h2 class="section-title">配置测评参数</h2>
+            <p class="section-desc">选择要测评的模型和测评模式</p>
+        </div>
+        
+        <div class="eval-config-card">
+            <!-- Step 1: Connection -->
+            <div class="eval-step" id="eval-step-1">
+                <div class="eval-step-header">
+                    <span class="eval-step-number">1</span>
+                    <h3>配置 API 连接</h3>
+                </div>
+                <div class="eval-step-body">
+                    <div class="field-row">
+                        <div class="field">
+                            <label for="eval-base_url">中转站网址 (Base URL)</label>
+                            <div class="input-wrap has-suffix">
+                                <input type="text" id="eval-base_url" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false">
+                                <button class="btn-icon" id="eval-provider-btn" title="选择预置服务商" type="button">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                                <div class="autocomplete" id="eval-url-autocomplete" hidden></div>
+                            </div>
+                            <div class="dropdown" id="eval-provider-dropdown" hidden>
+                                <div class="dropdown-search">
+                                    <input type="text" id="eval-provider-search" placeholder="搜索服务商..." autocomplete="off">
+                                </div>
+                                <div class="dropdown-list" id="eval-provider-list"></div>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="eval-api_key">API Key</label>
+                            <div class="input-wrap has-suffix">
+                                <input type="password" id="eval-api_key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+                                <button class="btn-icon" id="eval-toggle-key" title="显示/隐藏密钥" type="button">
+                                    <svg class="icon-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    <svg class="icon-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="probe-status" id="eval-probe-pill" hidden></div>
+                </div>
+            </div>
+
+            <!-- Step 2: Models -->
+            <div class="eval-step" id="eval-step-2" hidden>
+                <div class="eval-step-header">
+                    <span class="eval-step-number">2</span>
+                    <h3>选择待测评模型</h3>
+                </div>
+                <div class="eval-step-body">
+                    <div class="tab-bar" id="eval-protocol-tabs">
+                        <button class="tab active" data-eval-proto="all" type="button">全部</button>
+                        <button class="tab" data-eval-proto="anthropic" type="button"><span class="dot dot-anthropic"></span>Anthropic</button>
+                        <button class="tab" data-eval-proto="openai" type="button"><span class="dot dot-openai"></span>OpenAI</button>
+                        <button class="tab" data-eval-proto="gemini" type="button"><span class="dot dot-gemini"></span>Gemini</button>
+                    </div>
+                    <div class="manual-row" id="eval-manual-input-row" hidden>
+                        <input type="text" id="eval-manual-model-input" placeholder="输入模型名..." autocomplete="off">
+                        <button class="btn-secondary" id="eval-add-manual-model" type="button">添加</button>
+                    </div>
+                    <div class="model-grid" id="eval-model-grid"></div>
+                    <div class="eval-section" style="margin-top: 1rem;">
+                        <div class="eval-section-title"><span class="icon">📋</span> 或手动输入模型列表（每行一个）</div>
+                        <textarea class="eval-models-input" id="eval-models-input" placeholder="gpt-4o&#10;claude-sonnet-4-5&#10;deepseek-v4"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Dimensions & Difficulty -->
+            <div class="eval-step" id="eval-step-3" hidden>
+                <div class="eval-step-header">
+                    <span class="eval-step-number">3</span>
+                    <h3>选择测评维度与模式</h3>
+                </div>
+                <div class="eval-step-body">
+                    <div class="eval-section">
+                        <div class="eval-section-title"><span class="icon">📊</span> 测评维度（可多选）</div>
+                        <div class="eval-dimensions" id="eval-dimensions">
+                            <label class="eval-dim-checkbox checked" data-dim="basic_language">
+                                <input type="checkbox" checked> 基础语言
+                            </label>
+                            <label class="eval-dim-checkbox checked" data-dim="technical">
+                                <input type="checkbox" checked> 技术能力
+                            </label>
+                            <label class="eval-dim-checkbox checked" data-dim="advanced_cognition">
+                                <input type="checkbox" checked> 高级认知
+                            </label>
+                            <label class="eval-dim-checkbox checked" data-dim="practical">
+                                <input type="checkbox" checked> 实用能力
+                            </label>
+                            <label class="eval-dim-checkbox checked" data-dim="boundary">
+                                <input type="checkbox" checked> 边界鲁棒
+                            </label>
+                        </div>
+                    </div>
+                    <div class="eval-section">
+                        <div class="eval-section-title"><span class="icon">⚡</span> 测评模式</div>
+                        <div class="eval-difficulty-row" id="eval-difficulty">
+                            <div class="eval-difficulty-option active" data-diff="quick">
+                                <div class="diff-label">精简版</div>
+                                <div class="diff-desc">20题 · 快速预览</div>
+                                <div class="diff-time">~2分钟/模型</div>
+                            </div>
+                            <div class="eval-difficulty-option" data-diff="standard">
+                                <div class="diff-label">标准版</div>
+                                <div class="diff-desc">40题 · 均衡覆盖</div>
+                                <div class="diff-time">~5分钟/模型</div>
+                            </div>
+                            <div class="eval-difficulty-option" data-diff="full">
+                                <div class="diff-label">完整版</div>
+                                <div class="diff-desc">100题 · 全面测评</div>
+                                <div class="diff-time">~12分钟/模型</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4: Launch -->
+            <div class="eval-step" id="eval-step-4" hidden>
+                <div class="eval-step-header">
+                    <span class="eval-step-number">4</span>
+                    <h3>启动测评</h3>
+                </div>
+                <div class="eval-step-body">
+                    <div class="summary-box" id="eval-launch-summary"></div>
+                    <button class="btn-primary btn-block" id="eval-start-btn" type="button">开始测评</button>
+                </div>
+            </div>
+
+            <!-- Step 5: Results -->
+            <div class="eval-step" id="eval-step-5" hidden>
+                <div class="eval-step-header">
+                    <span class="eval-step-number">5</span>
+                    <h3>测评结果</h3>
+                </div>
+                <div class="eval-step-body">
+                    <div id="eval-progress-container"></div>
+                    <div id="eval-results-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== Back to Top ===== -->
+<div id="back-to-top" class="back-to-top" style="display: none;">
+    <button class="btn-top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})" type="button" title="回到顶部">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+    </button>
+</div>
+
+<footer class="footer">
+    Model Detective v2.8.5-web · Cosmic Galaxy v5.1 · <a href="/">返回首页</a> · <a href="https://github.com" target="_blank">GitHub</a>
+</footer>
+
+</div>
+<script src="/static/evaluation.js?v=COSMIC_V5_1_20260804"></script>
+</body>
+</html>

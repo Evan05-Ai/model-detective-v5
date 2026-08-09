@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中转站API检测工具报告 - {{ report.model }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+        .container { max-width: 900px; margin: 40px auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; padding: 30px 40px; }
+        .header h1 { font-size: 24px; margin-bottom: 8px; }
+        .header .meta { font-size: 14px; opacity: 0.9; }
+        .header .meta span { margin-right: 20px; }
+        .verdict-box { padding: 30px 40px; text-align: center; border-bottom: 1px solid #eee; }
+        .verdict-box .score { font-size: 48px; font-weight: bold; color: {{ verdict_color }}; }
+        .verdict-box .label { font-size: 18px; color: {{ verdict_color }}; margin-top: 8px; }
+        .backend-tag { display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 12px; font-size: 13px; background: #e0e7ff; color: #4338ca; }
+        .scores-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; padding: 30px 40px; border-bottom: 1px solid #eee; }
+        .score-card { text-align: center; padding: 20px; background: #f9fafb; border-radius: 8px; }
+        .score-card .title { font-size: 14px; color: #666; margin-bottom: 8px; }
+        .score-card .value { font-size: 28px; font-weight: bold; }
+        .section { padding: 30px 40px; border-bottom: 1px solid #eee; }
+        .section h2 { font-size: 18px; margin-bottom: 16px; color: #333; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 10px 12px; background: #f9fafb; font-size: 13px; color: #666; border-bottom: 2px solid #eee; }
+        td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+        .status-pass { color: #22c55e; }
+        .status-fail { color: #ef4444; }
+        .status-skip { color: #999; }
+        .status-error { color: #ef4444; }
+        .issue { padding: 8px 12px; margin: 4px 0; border-radius: 4px; font-size: 13px; }
+        .issue-critical { background: #fef2f2; border-left: 3px solid #ef4444; }
+        .issue-major { background: #fffbeb; border-left: 3px solid #f59e0b; }
+        .issue-medium { background: #fffbeb; border-left: 3px solid #eab308; }
+        .issue-minor { background: #eff6ff; border-left: 3px solid #3b82f6; }
+        .issue-ok { background: #f0fdf4; border-left: 3px solid #22c55e; }
+        .details-cell { color: #666; font-size: 12px; font-family: monospace; }
+        .billing-highlight { background: #fef3c7; }
+        .footer { padding: 20px 40px; text-align: center; font-size: 12px; color: #999; }
+        .cost-bar { display: flex; gap: 30px; padding: 20px 40px; background: #f9fafb; }
+        .cost-item { font-size: 14px; }
+        .cost-item .label { color: #666; }
+        .cost-item .value { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>[SEARCH] 中转站API检测工具检测报告</h1>
+            <div class="meta">
+                <span>模型: <strong>{{ report.model }}</strong></span>
+                <span>协议: {{ report.protocol.value }}{% if report.degraded %} (降级){% endif %}</span>
+                <span>模式: {{ report.mode }}</span>
+                <span>时间: {{ generated_at }}</span>
+            </div>
+        </div>
+
+        <div class="verdict-box">
+            <div class="score">{{ "%.1f"|format(report.total_score) }}</div>
+            <div class="label">{{ verdict_text }}</div>
+            {% if report.backend_source and report.backend_source != "unknown" %}
+            <div class="backend-tag">{{ report.backend_source }}</div>
+            {% endif %}
+            {% if report.has_critical %}
+            <div style="margin-top: 12px; color: #ef4444; font-size: 14px;">
+                [!] 存在 CRITICAL 级别问题，verdict 已锁定上限为 MARGINAL
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="scores-grid">
+            <div class="score-card">
+                <div class="title">真伪分</div>
+                <div class="value" style="color: {% if report.authenticity_score >= 70 %}#22c55e{% elif report.authenticity_score >= 50 %}#f59e0b{% else %}#ef4444{% endif %};">
+                    {{ "%.1f"|format(report.authenticity_score) }}
+                </div>
+            </div>
+            <div class="score-card">
+                <div class="title">能力分</div>
+                <div class="value" style="color: {% if report.capability_score >= 70 %}#22c55e{% elif report.capability_score >= 50 %}#f59e0b{% else %}#ef4444{% endif %};">
+                    {{ "%.1f"|format(report.capability_score) }}
+                </div>
+            </div>
+            <div class="score-card">
+                <div class="title">合规分</div>
+                <div class="value" style="color: {% if report.compliance_score >= 70 %}#22c55e{% elif report.compliance_score >= 50 %}#f59e0b{% else %}#ef4444{% endif %};">
+                    {{ "%.1f"|format(report.compliance_score) }}
+                </div>
+            </div>
+        </div>
+
+        <div class="cost-bar">
+            <div class="cost-item"><span class="label">请求次数:</span> <span class="value">{{ report.total_requests }}</span></div>
+            <div class="cost-item"><span class="label">总 Token:</span> <span class="value">{{ report.total_tokens }}</span></div>
+            <div class="cost-item"><span class="label">估算费用:</span> <span class="value">~${{ "%.4f"|format(report.estimated_cost_usd) }} USD</span></div>
+            <div class="cost-item"><span class="label">耗时:</span> <span class="value">{{ "%.1f"|format(report.duration_seconds) }}s</span></div>
+        </div>
+
+        <div class="section">
+            <h2>检测器详情</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>检测器</th>
+                        <th>类别</th>
+                        <th>分数</th>
+                        <th>状态</th>
+                        <th>Token</th>
+                        <th>详情</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in results %}
+                    <tr{% if r.name == 'billing_integrity' %} class="billing-highlight"{% endif %}>
+                        <td>{{ r.name }}</td>
+                        <td>{{ r.category.value }}</td>
+                        <td>{{ "%.0f"|format(r.score) }}</td>
+                        <td class="status-{{ r.status }}">{{ r.status }}</td>
+                        <td>{{ r.cost_tokens }}</td>
+                        <td class="details-cell">{{ (r.details or '')[:120] }}</td>
+                    </tr>
+                    {% if r.issues %}
+                    <tr>
+                        <td colspan="6" style="padding: 0;">
+                            {% for issue in r.issues %}
+                            <div class="issue issue-{{ issue.level.value }}" style="border-left-color: {{ issue_colors.get(issue.level, '#999') }};">
+                                <strong>{{ issue.level.value|upper }}</strong>: {{ issue.message }}
+                            </div>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if report.baseline_diff %}
+        <div class="section">
+            <h2>基线对比</h2>
+            <table>
+                <tr>
+                    <th>基线分</th>
+                    <th>当前分</th>
+                    <th>差异</th>
+                </tr>
+                <tr>
+                    <td>{{ "%.1f"|format(report.baseline_diff.baseline_score) }}</td>
+                    <td>{{ "%.1f"|format(report.baseline_diff.current_score) }}</td>
+                    <td style="color: {% if report.baseline_diff.score_delta >= 0 %}#22c55e{% else %}#ef4444{% endif %};">
+                        {{ "%+.1f"|format(report.baseline_diff.score_delta) }}
+                    </td>
+                </tr>
+            </table>
+            {% if report.baseline_diff.detector_diffs %}
+            <h3 style="margin-top: 16px; font-size: 14px;">显著差异检测器</h3>
+            <table>
+                <tr><th>检测器</th><th>基线</th><th>当前</th><th>差异</th></tr>
+                {% for d in report.baseline_diff.detector_diffs %}
+                <tr>
+                    <td>{{ d.name }}</td>
+                    <td>{{ "%.0f"|format(d.baseline_score) }}</td>
+                    <td>{{ "%.0f"|format(d.current_score) }}</td>
+                    <td style="color: {% if d.delta >= 0 %}#22c55e{% else %}#ef4444{% endif %};">{{ "%+.0f"|format(d.delta) }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            中转站API检测工具 | Generated at {{ generated_at }}
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Detective — API 中转站检测 & 模型能力测评</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=COSMIC_V5_1_20260804">
+</head>
+<body>
+<canvas id="star-canvas"></canvas>
+<div class="scroll-progress" id="scroll-progress"></div>
+<div id="app">
+
+<!-- ===== Navigation Bar ===== -->
+<nav class="navbar">
+    <div class="nav-brand" onclick="goToHome()" style="cursor: pointer;" title="返回首页">
+        <div class="nav-logo">M</div>
+        <span class="nav-title">Model Detective</span>
+    </div>
+    <div class="nav-tabs">
+        <button class="nav-tab active" id="tab-detection" type="button">
+            <span class="nav-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></span>
+            <span class="nav-tab-text">API 检测</span>
+        </button>
+        <a href="/evaluation" class="nav-tab" id="tab-evaluation">
+            <span class="nav-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>
+            <span class="nav-tab-text">模型测评</span>
+        </a>
+    </div>
+    <div class="nav-actions">
+        <a href="https://github.com" target="_blank" class="nav-link" title="GitHub">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        </a>
+    </div>
+</nav>
+
+<!-- ===== Hero Section ===== -->
+<header class="hero-section">
+    <div class="hero-particles" id="hero-particles"></div>
+    <div class="hero-aurora"></div>
+    <div class="hero-content-wrapper">
+        <div class="hero-badge">
+            <span class="badge-dot"></span>
+            <span>v5.1 Cosmic Galaxy 现已发布</span>
+        </div>
+<h1 class="hero-title">
+                <span class="gradient-text cosmic-text">检测 AI 中转站</span>
+                <br><span class="cosmic-subtitle">验证模型真伪与能力</span>
+            </h1>
+        <p class="hero-subtitle">
+            专业的 API 中转站检测与模型能力测评平台
+            <br>31+ 检测器 · 3 大协议 · 100 道标准化测评题
+        </p>
+        <div class="hero-cta">
+            <button class="btn-cta-primary" onclick="scrollToConfig()" type="button">
+                <span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span> 立即开始检测
+            </button>
+            <a href="/evaluation" class="btn-cta-secondary">
+                <span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span> 模型能力测评
+            </a>
+        </div>
+        
+        <!-- Stats Bar -->
+        <div class="hero-stats-bar">
+            <div class="stat-item">
+                <div class="stat-number">31+</div>
+                <div class="stat-label">专业检测器</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+                <div class="stat-number">3</div>
+                <div class="stat-label">协议支持</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+                <div class="stat-number">100</div>
+                <div class="stat-label">测评题目</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+                <div class="stat-number">0</div>
+                <div class="stat-label">完全免费</div>
+            </div>
+        </div>
+    </div>
+    
+</header>
+
+<!-- ===== Quick Start Config Section ===== -->
+<section class="quick-start-section" id="quick-start">
+    <div class="container">
+        <div class="card quick-config-card" id="step-config">
+            <div class="card-head">
+                <span class="step-badge">1</span>
+                <h2>配置 API 连接</h2>
+                <div class="card-actions">
+                    <button class="btn-ghost" id="history-btn" type="button">📋 检测历史</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="field-row">
+                    <div class="field">
+                        <label for="base_url">中转站网址 (Base URL)</label>
+                        <div class="input-wrap has-suffix">
+                            <input type="text" id="base_url" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false">
+                            <button class="btn-icon" id="provider-btn" title="选择预置服务商" type="button">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="autocomplete" id="url-autocomplete" hidden></div>
+                        </div>
+                        <div class="dropdown" id="provider-dropdown" hidden>
+                            <div class="dropdown-search">
+                                <input type="text" id="provider-search" placeholder="搜索服务商..." autocomplete="off">
+                            </div>
+                            <div class="dropdown-list" id="provider-list"></div>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="api_key">API Key</label>
+                        <div class="input-wrap has-suffix">
+                            <input type="password" id="api_key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+                            <button class="btn-icon" id="toggle-key" title="显示/隐藏密钥" type="button">
+                                <svg class="icon-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <svg class="icon-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="probe-status" id="probe-pill" hidden></div>
+                
+                <!-- 探测成功后显示的内容 -->
+                <div id="detection-workflow" hidden>
+                    <!-- Step 2: Model Selection -->
+                    <div class="workflow-step" id="workflow-models">
+                        <div class="workflow-step-header">
+                            <span class="step-badge">2</span>
+                            <h3>选择检测模型</h3>
+                            <div class="step-actions">
+                                <button class="btn-ghost btn-sm" id="select-all-models" type="button">全选</button>
+                                <button class="btn-ghost btn-sm" id="deselect-all-models" type="button">清空</button>
+                                <button class="btn-ghost btn-sm" id="manual-model-btn" type="button">+ 手动添加</button>
+                            </div>
+                        </div>
+                        <div class="selected-models-bar" id="selected-models-bar">
+                            <span class="selected-count" id="selected-count">已选择 0 个模型</span>
+                            <div class="selected-tags" id="selected-tags"></div>
+                        </div>
+                        <div class="manual-row" id="manual-input-row" hidden>
+                            <input type="text" id="manual-model-input" placeholder="输入模型名 (如 gpt-4o, claude-sonnet-4-5-20250514)..." autocomplete="off">
+                            <button class="btn-secondary" id="add-manual-model" type="button">添加</button>
+                        </div>
+                        <div class="tab-bar" id="protocol-tabs">
+                            <button class="tab active" data-proto="all" type="button">全部</button>
+                            <button class="tab" data-proto="anthropic" type="button"><span class="dot dot-anthropic"></span>Anthropic</button>
+                            <button class="tab" data-proto="openai" type="button"><span class="dot dot-openai"></span>OpenAI</button>
+                            <button class="tab" data-proto="gemini" type="button"><span class="dot dot-gemini"></span>Gemini</button>
+                        </div>
+                        <div class="model-grid" id="model-grid"></div>
+                    </div>
+                    
+                    <!-- Step 3: Detection Mode -->
+                    <div class="workflow-step" id="workflow-mode">
+                        <div class="workflow-step-header">
+                            <span class="step-badge">3</span>
+                            <h3>检测模式</h3>
+                        </div>
+                        <div class="mode-grid">
+                            <div class="mode-card" data-mode="quick">
+                                <div class="mode-header">
+                                    <h4>Quick</h4>
+                                    <span class="mode-time">~15s</span>
+                                </div>
+                                <p class="mode-desc">快速检查：基础请求、模型一致性、响应格式</p>
+                            </div>
+                            <div class="mode-card selected" data-mode="standard">
+                                <span class="mode-recommend">推荐</span>
+                                <div class="mode-header">
+                                    <h4>Standard</h4>
+                                    <span class="mode-time">~40s</span>
+                                </div>
+                                <p class="mode-desc">均衡覆盖：函数调用、完整性、计费审计、思维链</p>
+                            </div>
+                            <div class="mode-card" data-mode="full">
+                                <div class="mode-header">
+                                    <h4>Full</h4>
+                                    <span class="mode-time">~70s+</span>
+                                </div>
+                                <p class="mode-desc">深度审计：结构化输出、长上下文、多轮对话、并发</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Step 4: Launch -->
+                    <div class="workflow-step" id="workflow-launch">
+                        <div class="workflow-step-header">
+                            <span class="step-badge">4</span>
+                            <h3>启动检测</h3>
+                        </div>
+                        <div class="launch-box">
+                            <div class="launch-summary" id="launch-summary"></div>
+                            <button class="btn-primary btn-block" id="start-btn" type="button">开始检测</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== Features Section ===== -->
+<section class="features-section" id="features-section">
+    <div class="section-header">
+        <span class="section-tag">核心功能</span>
+        <h2 class="section-title">全方位 AI 模型检测方案</h2>
+        <p class="section-desc">从 API 中转站真伪验证到模型能力深度测评，一站式解决你的所有疑虑</p>
+    </div>
+    <div class="features-grid">
+        <div class="feature-card">
+            <div class="feature-icon-wrapper">
+                <div class="feature-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
+                </div>
+                <div class="feature-glow"></div>
+            </div>
+            <h3 class="feature-title">中转站真伪检测</h3>
+            <p class="feature-desc">31+ 专业检测器，覆盖 OpenAI、Anthropic、Gemini 三大协议，快速识别真假中转站</p>
+            <div class="feature-tags">
+                <span class="feature-tag">身份验证</span>
+                <span class="feature-tag">一致性检测</span>
+                <span class="feature-tag">思维签名</span>
+            </div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon-wrapper">
+                <div class="feature-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/><path d="M8 14h8"/></svg>
+                </div>
+                <div class="feature-glow"></div>
+            </div>
+            <h3 class="feature-title">计费诚信审计</h3>
+            <p class="feature-desc">精确审计 Token 消耗，检测计费倍率，防止中转站虚报计费、暗箱操作</p>
+            <div class="feature-tags">
+                <span class="feature-tag">Token 审计</span>
+                <span class="feature-tag">计费倍率</span>
+                <span class="feature-tag">透明度报告</span>
+            </div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon-wrapper">
+                <div class="feature-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                </div>
+                <div class="feature-glow"></div>
+            </div>
+            <h3 class="feature-title">模型能力测评</h3>
+            <p class="feature-desc">100 道标准化测评题，5 大维度全面评估模型能力，生成专业测评报告</p>
+            <div class="feature-tags">
+                <span class="feature-tag">5 大维度</span>
+                <span class="feature-tag">标准化题库</span>
+                <span class="feature-tag">雷达图报告</span>
+            </div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon-wrapper">
+                <div class="feature-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                </div>
+                <div class="feature-glow"></div>
+            </div>
+            <h3 class="feature-title">渐进式探测</h3>
+            <p class="feature-desc">智能预检探针 + 分优先级执行 + 早终止机制，优化 Token 消耗，提升检测效率</p>
+            <div class="feature-tags">
+                <span class="feature-tag">智能预算</span>
+                <span class="feature-tag">早终止</span>
+                <span class="feature-tag">高效探测</span>
+            </div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon-wrapper">
+                <div class="feature-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                </div>
+                <div class="feature-glow"></div>
+            </div>
+            <h3 class="feature-title">置信度系统</h3>
+            <p class="feature-desc">每个检测结果附带置信度评分，让你了解结论的可信程度，避免误判</p>
+            <div class="feature-tags">
+                <span class="feature-tag">置信评分</span>
+                <span class="feature-tag">加权算法</span>
+                <span class="feature-tag">透明度</span>
+            </div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon-wrapper">
+                <div class="feature-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                </div>
+                <div class="feature-glow"></div>
+            </div>
+            <h3 class="feature-title">本地部署</h3>
+            <p class="feature-desc">完全本地运行，数据不出境，API Key 安全存储在浏览器本地，隐私无忧</p>
+            <div class="feature-tags">
+                <span class="feature-tag">本地运行</span>
+                <span class="feature-tag">隐私安全</span>
+                <span class="feature-tag">开源免费</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== How It Works Section ===== -->
+<section class="how-it-works-section" id="how-it-works">
+    <div class="section-header">
+        <span class="section-tag">使用流程</span>
+        <h2 class="section-title">三步完成检测</h2>
+        <p class="section-desc">简单直观的操作流程，无需专业知识即可上手</p>
+    </div>
+    <div class="steps-container">
+        <div class="step-card">
+            <div class="step-number">01</div>
+            <div class="step-content">
+                <div class="step-icon"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
+                <h3 class="step-title">配置连接</h3>
+                <p class="step-desc">输入 API 中转站地址和密钥，支持自动探测服务商</p>
+            </div>
+            <div class="step-arrow">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+        </div>
+        <div class="step-card">
+            <div class="step-number">02</div>
+            <div class="step-content">
+                <div class="step-icon"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
+                <h3 class="step-title">选择模式</h3>
+                <p class="step-desc">选择检测模式（Quick/Standard/Full）和待测模型</p>
+            </div>
+            <div class="step-arrow">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+        </div>
+        <div class="step-card">
+            <div class="step-number">03</div>
+            <div class="step-content">
+                <div class="step-icon"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg></div>
+                <h3 class="step-title">查看报告</h3>
+                <p class="step-desc">实时查看检测进度，生成详细报告，支持 JSON 导出</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<main class="container">
+
+<!-- ===== API Detection Section ===== -->
+<section id="section-detection">
+
+<!-- ===== Step 5: Results ===== -->
+<div class="card" id="step-results" hidden>
+    <div class="card-head">
+        <span class="step-badge">5</span>
+        <h2>检测结果</h2>
+    </div>
+    <div class="card-body">
+        <div id="progress-container"></div>
+        <div id="results-container"></div>
+    </div>
+</div>
+
+</section>
+
+<!-- ===== Model Evaluation Section (已迁移至 /evaluation 独立页面) ===== -->
+<section id="section-evaluation" hidden>
+
+<!-- Evaluation Step 1: Connection -->
+<div class="card eval-card" id="eval-step-config">
+    <div class="card-head">
+        <span class="step-badge eval-badge">1</span>
+        <h2>🧪 测评配置</h2>
+    </div>
+    <div class="card-body">
+        <div class="eval-intro">
+            <p>配置要测评的 API 中转站，用于发送测试题目并获取模型回答。</p>
+        </div>
+        <div class="field-row">
+            <div class="field">
+                <label for="eval-base_url">中转站网址 (Base URL)</label>
+                <div class="input-wrap has-suffix">
+                    <input type="text" id="eval-base_url" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false">
+                    <button class="btn-icon" id="eval-provider-btn" title="选择预置服务商" type="button">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="autocomplete" id="eval-url-autocomplete" hidden></div>
+                </div>
+                <div class="dropdown" id="eval-provider-dropdown" hidden>
+                    <div class="dropdown-search">
+                        <input type="text" id="eval-provider-search" placeholder="搜索服务商..." autocomplete="off">
+                    </div>
+                    <div class="dropdown-list" id="eval-provider-list"></div>
+                </div>
+            </div>
+            <div class="field">
+                <label for="eval-api_key">API Key</label>
+                <div class="input-wrap has-suffix">
+                    <input type="password" id="eval-api_key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+                    <button class="btn-icon" id="eval-toggle-key" title="显示/隐藏密钥" type="button">
+                        <svg class="icon-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <svg class="icon-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="probe-status" id="eval-probe-pill" hidden></div>
+    </div>
+</div>
+
+<!-- Evaluation Step 2: Models -->
+<div class="card" id="eval-step-models" hidden>
+    <div class="card-head">
+        <span class="step-badge">2</span>
+        <h2>选择待测评模型</h2>
+        <div class="card-actions">
+            <button class="btn-ghost" id="eval-select-all-models" type="button">全选</button>
+            <button class="btn-ghost" id="eval-deselect-all-models" type="button">清空</button>
+            <button class="btn-ghost" id="eval-manual-model-btn" type="button">+ 手动添加</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="tab-bar" id="eval-protocol-tabs">
+            <button class="tab active" data-eval-proto="all" type="button">全部</button>
+            <button class="tab" data-eval-proto="anthropic" type="button"><span class="dot dot-anthropic"></span>Anthropic</button>
+            <button class="tab" data-eval-proto="openai" type="button"><span class="dot dot-openai"></span>OpenAI</button>
+            <button class="tab" data-eval-proto="gemini" type="button"><span class="dot dot-gemini"></span>Gemini</button>
+        </div>
+        <div class="manual-row" id="eval-manual-input-row" hidden>
+            <input type="text" id="eval-manual-model-input" placeholder="输入模型名 (如 gpt-4o, claude-sonnet-4-5-20250514)..." autocomplete="off">
+            <button class="btn-secondary" id="eval-add-manual-model" type="button">添加</button>
+        </div>
+        <div class="model-grid" id="eval-model-grid"></div>
+        <div class="eval-section" style="margin-top: 1rem;">
+            <div class="eval-section-title"><span class="icon">📋</span> 或手动输入模型列表（每行一个，或逗号分隔）</div>
+            <textarea class="eval-models-input" id="eval-models-input" placeholder="agnes-2.5-flash&#10;deepseek-v4-pro&#10;mimo-v2.5-pro&#10;qwen-3.7-max&#10;glm-5.2"></textarea>
+        </div>
+    </div>
+</div>
+
+<!-- Evaluation Step 3: Dimensions -->
+<div class="card" id="eval-step-dimensions" hidden>
+    <div class="card-head">
+        <span class="step-badge">3</span>
+        <h2>选择测评维度</h2>
+    </div>
+    <div class="card-body">
+        <div class="eval-section">
+            <div class="eval-section-title"><span class="icon">📊</span> 测评维度（可多选）</div>
+            <div class="eval-dimensions" id="eval-dimensions">
+                <label class="eval-dim-checkbox checked" data-dim="basic_language">
+                    <input type="checkbox" checked> 基础语言
+                </label>
+                <label class="eval-dim-checkbox checked" data-dim="technical">
+                    <input type="checkbox" checked> 技术能力
+                </label>
+                <label class="eval-dim-checkbox checked" data-dim="advanced_cognition">
+                    <input type="checkbox" checked> 高级认知
+                </label>
+                <label class="eval-dim-checkbox checked" data-dim="practical">
+                    <input type="checkbox" checked> 实用能力
+                </label>
+                <label class="eval-dim-checkbox checked" data-dim="boundary">
+                    <input type="checkbox" checked> 边界鲁棒
+                </label>
+            </div>
+        </div>
+        <div class="eval-section">
+            <div class="eval-section-title"><span class="icon">⚡</span> 测评模式</div>
+            <div class="eval-difficulty-row" id="eval-difficulty">
+                <div class="eval-difficulty-option active" data-diff="quick">
+                    <div class="diff-label">精简版</div>
+                    <div class="diff-desc">20题 · 快速预览</div>
+                    <div class="diff-time">~2分钟/模型</div>
+                </div>
+                <div class="eval-difficulty-option" data-diff="standard">
+                    <div class="diff-label">标准版</div>
+                    <div class="diff-desc">40题 · 均衡覆盖</div>
+                    <div class="diff-time">~5分钟/模型</div>
+                </div>
+                <div class="eval-difficulty-option" data-diff="full">
+                    <div class="diff-label">完整版</div>
+                    <div class="diff-desc">100题 · 全面测评</div>
+                    <div class="diff-time">~12分钟/模型</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Evaluation Step 4: Launch -->
+<div class="card" id="eval-step-launch" hidden>
+    <div class="card-head">
+        <span class="step-badge">4</span>
+        <h2>启动测评</h2>
+    </div>
+    <div class="card-body">
+        <div class="summary-box" id="eval-launch-summary"></div>
+        <button class="btn-primary btn-block" id="eval-start-btn" type="button">开始测评</button>
+    </div>
+</div>
+
+<!-- Evaluation Step 5: Results -->
+<div class="card" id="eval-step-results" hidden>
+    <div class="card-head">
+        <span class="step-badge">5</span>
+        <h2>测评结果</h2>
+    </div>
+    <div class="card-body">
+        <div id="eval-progress-container"></div>
+        <div id="eval-results-container"></div>
+    </div>
+</div>
+
+</section>
+
+</main>
+
+<!-- 回到顶部按钮 -->
+<div id="back-to-top" class="back-to-top" style="display: none;">
+    <button class="btn-top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})" type="button" title="回到顶部">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+    </button>
+</div>
+
+<footer class="footer">
+    Model Detective v2.8.5-web · Cosmic Galaxy v5.1 · 31 检测器 · 3 协议 · 100 测评题 · <a href="https://github.com" target="_blank">GitHub</a>
+</footer>
+
+</div>
+<script src="/static/starfield.js?v=COSMIC_V5_1_20260804"></script>
+<script src="/static/app.js?v=COSMIC_V5_1_20260804"></script>
+</body>
+</html>
