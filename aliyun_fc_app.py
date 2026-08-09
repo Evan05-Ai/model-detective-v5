@@ -3,11 +3,14 @@
 Model Detective Web - Alibaba Cloud Function Compute Adapter
 
 This file adapts the Flask app for Alibaba Cloud Function Compute (FC).
-Uses simple WSGI handler for HTTP triggers.
+Compatible with FC 3.0 HTTP triggers.
 """
 
 import os
 import sys
+import json
+import base64
+from io import BytesIO
 
 # ── path setup ──────────────────────────────────────────────
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -16,53 +19,30 @@ sys.path.insert(0, _PROJECT_ROOT)
 # ── import Flask app ────────────────────────────────────────
 from web.app import app
 
-# ── FC Handler for HTTP Triggers ────────────────────────────
-def handler(environ, start_response):
-    """
-    Alibaba Cloud Function Compute WSGI handler.
-    
-    For HTTP triggers, FC calls this handler with WSGI environ.
-    """
-    return app(environ, start_response)
 
-
-# For custom runtime or event triggers (if needed)
-def handle_event(event, context):
+def handler(event, context):
     """
-    Event trigger handler (not used for HTTP triggers).
-    """
-    import json
-    return {
-        'statusCode': 200,
-        'headers': {'Content-Type': 'application/json'},
-        'body': json.dumps({'message': 'Event received', 'event': event})
-    }
-
-
-# Aliyun FC 3.0 HTTP handler format
-def fc_handler(event, context):
-    """
-    FC 3.0 HTTP trigger handler.
+    Alibaba Cloud Function Compute 3.0 HTTP handler.
     
     Args:
-        event: HTTP request event dict
-        context: FC context
+        event: HTTP request event (dict or string)
+        context: FC context object
     
     Returns:
         HTTP response dict
     """
-    import json
-    from io import BytesIO
-    
-    # Parse event
+    # Parse event if it's a string
     if isinstance(event, str):
-        event = json.loads(event)
+        try:
+            event = json.loads(event)
+        except json.JSONDecodeError:
+            event = {}
     
-    # Extract request info
+    # Get request info from event
     http_method = event.get('httpMethod', 'GET')
     path = event.get('path', '/')
-    headers = event.get('headers', {})
-    query_params = event.get('queryParameters', {})
+    headers = event.get('headers', {}) or {}
+    query_params = event.get('queryParameters', {}) or {}
     body = event.get('body', '')
     
     # Build WSGI environ
@@ -85,7 +65,7 @@ def fc_handler(event, context):
         'wsgi.run_once': False,
     }
     
-    # Add HTTP headers
+    # Add HTTP headers to environ
     for header_name, header_value in headers.items():
         key = 'HTTP_' + header_name.upper().replace('-', '_')
         environ[key] = header_value
@@ -102,30 +82,51 @@ def fc_handler(event, context):
         return response_body.append
     
     # Call Flask app
-    response_iter = app(environ, start_response)
-    
-    # Collect response
-    for chunk in response_iter:
-        response_body.append(chunk)
-    
-    # Build response
-    body_content = b''.join(response_body)
-    
-    # Check if binary
-    content_type = dict(response_headers).get('Content-Type', '')
-    is_binary = not content_type.startswith(('text/', 'application/json', 'application/javascript'))
-    
-    if is_binary:
-        import base64
-        body_str = base64.b64encode(body_content).decode('utf-8')
-        is_base64 = True
-    else:
-        body_str = body_content.decode('utf-8', errors='replace')
-        is_base64 = False
-    
-    return {
-        'statusCode': int(response_status.split()[0]),
-        'headers': dict(response_headers),
-        'body': body_str,
-        'isBase64Encoded': is_base64
-    }
+    try:
+        response_iter = app(environ, start_response)
+        
+        # Collect response body
+        for chunk in response_iter:
+            if isinstance(chunk, str):
+                response_body.append(chunk.encode('utf-8'))
+            else:
+                response_body.append(chunk)
+        
+        # Build response
+        body_content = b''.join(response_body)
+        
+        # Check if binary response
+        content_type = ''
+        for header_name, header_value in response_headers:
+            if header_name.lower() == 'content-type':
+                content_type = header_value
+                break
+        
+        is_binary = not content_type.startswith(('text/', 'application/json', 'application/javascript'))
+        
+        if is_binary:
+            body_str = base64.b64encode(body_content).decode('utf-8')
+            is_base64 = True
+        else:
+            body_str = body_content.decode('utf-8', errors='replace')
+            is_base64 = False
+        
+        # Build response headers dict
+        headers_dict = {}
+        for header_name, header_value in response_headers:
+            headers_dict[header_name] = header_value
+        
+        return {
+            'statusCode': int(response_status.split()[0]),
+            'headers': headers_dict,
+            'body': body_str,
+            'isBase64Encoded': is_base64
+        }
+        
+    except Exception as e:
+        # Return error response
+        return {
+            'statusCode': 500,
+            'headers': {'Content-Type': 'text/plain'},
+            'body': f'Error: {str(e)}'
+        }
