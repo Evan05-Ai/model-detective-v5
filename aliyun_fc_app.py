@@ -16,14 +16,6 @@ from io import BytesIO
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _PROJECT_ROOT)
 
-# ── install dependencies if not present ─────────────────────
-try:
-    from flask import Flask
-except ImportError:
-    import subprocess
-    subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt', '-t', _PROJECT_ROOT], 
-                   check=True, capture_output=True)
-
 # ── import Flask app ────────────────────────────────────────
 from web.app import app
 
@@ -33,18 +25,25 @@ def handler(event, context):
     Alibaba Cloud Function Compute 3.0 HTTP handler.
     
     Args:
-        event: HTTP request event (dict or string)
+        event: HTTP request event (bytes, string, or dict)
         context: FC context object
     
     Returns:
         HTTP response dict
     """
-    # Parse event if it's a string
-    if isinstance(event, str):
+    # Handle different event types
+    if isinstance(event, bytes):
+        try:
+            event = json.loads(event.decode('utf-8'))
+        except:
+            event = {}
+    elif isinstance(event, str):
         try:
             event = json.loads(event)
-        except json.JSONDecodeError:
+        except:
             event = {}
+    elif not isinstance(event, dict):
+        event = {}
     
     # Get request info from event
     http_method = event.get('httpMethod', 'GET')
@@ -133,8 +132,10 @@ def handler(event, context):
         
     except Exception as e:
         # Return error response
+        import traceback
+        error_msg = f'Error: {str(e)}\n{traceback.format_exc()}'
         return {
             'statusCode': 500,
             'headers': {'Content-Type': 'text/plain'},
-            'body': f'Error: {str(e)}'
+            'body': error_msg
         }
