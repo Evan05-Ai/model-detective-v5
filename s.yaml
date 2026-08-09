@@ -28,12 +28,11 @@ resources:
       description: Model Detective Flask应用
       runtime: python3.10
       code: ./
-      handler: aliyun_fc_app.handler  # FC 3.0 HTTP handler
+      handler: aliyun_fc_app.handler
       memorySize: 1024  # 1GB 内存，支持 Full Test
       timeout: 300      # 5分钟超时
       environmentVariables:
         FLASK_ENV: production
-        PYTHONPATH: /opt/python
       triggers:
         - triggerName: http-trigger
           triggerType: http

@@ -16,6 +16,14 @@ from io import BytesIO
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _PROJECT_ROOT)
 
+# ── install dependencies if not present ─────────────────────
+try:
+    from flask import Flask
+except ImportError:
+    import subprocess
+    subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt', '-t', _PROJECT_ROOT], 
+                   check=True, capture_output=True)
+
 # ── import Flask app ────────────────────────────────────────
 from web.app import app
 
