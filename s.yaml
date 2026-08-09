@@ -33,6 +33,7 @@ resources:
       timeout: 300      # 5分钟超时
       environmentVariables:
         FLASK_ENV: production
+        PYTHONPATH: /opt/python
       triggers:
         - triggerName: http-trigger
           triggerType: http
