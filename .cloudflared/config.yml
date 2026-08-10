@@ -1,0 +1,11 @@
+# Cloudflare 命名隧道配置文件
+# 隧道名称: model-detective
+# 域名: model-detective.online
+
+tunnel: fd06a112-b78b-492e-8e81-33c20ef93fa7
+credentials-file: d:\Ai工作\model-detective\.cloudflared\model-detective.json
+
+ingress:
+  - hostname: detect.model-detective.online
+    service: http://localhost:5000
+  - service: http_status:404
