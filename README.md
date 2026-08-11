@@ -6,6 +6,10 @@
   <strong>Cosmic Galaxy v5.1</strong> · 前端 · 后端 v2.8.5
 </p>
 
+<p align="center">
+  <a href="https://detect.model-detective.online" target="_blank">🌐 在线访问: detect.model-detective.online</a>
+</p>
+
 ---
 
 ## 🚀 快速启动
