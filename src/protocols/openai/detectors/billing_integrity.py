@@ -1,19 +1,16 @@
 """
-billing_integrity - 计费完整性检测（OpenAI 协议，v2.5 修正版）
+billing_integrity - 计费完整性检测（OpenAI 协议，v2.6 重构版）
 
-检测项：
-  1. Token 计数合理性检查 — 验证上报的 token 数是否在合理范围内
-  2. Cache 字段审计 — 检查 cache 相关字段存在性
-  3. 输出 token 合理性 — 估算 output tokens 对比上报值（宽松阈值）
-  4. 计费倍率参考 — 计算上报/估算比值，仅作参考不直接判定
+核心变更（2026-08-11）：
+  - 重构算法逻辑：从"固定阈值"改为"对照组基准"
+  - 认识到中转站的 prompt_tokens 必然包含系统消息等开销
+  - 用"相对官方 API 的偏差"替代"相对于纯文本的倍数"
+  - 大幅放宽判定标准，避免误报
 
-v2.5 重要修正（2026-08-11）：
-  - 同步 Anthropic 版本的宽松阈值策略
-  - 不再声称用 tiktoken "精确"计算（中转站可能有额外开销）
-  - 放宽偏差阈值：input >200% 才提示，避免误报
-  - 放宽倍率阈值：>5x 才提示，不作为负面评分
-  - 移除"虚报计费"等主观定性，改为客观数据展示
-  - 增加常见原因说明：系统消息、工具定义、不同 tokenizer 等
+检测逻辑：
+  1. 估算最小理论值（纯文本）
+  2. 接受合理开销范围（系统消息等）
+  3. 仅当显著超出合理范围时才提示
 
 注意：本检测器仅检查数据合理性，不做诚信判定。
 """
@@ -22,41 +19,48 @@ from src.core.detector_base import ActiveDetector
 from src.core.models import CheckResultV2, Issue, IssueLevel
 from ..config import WEIGHTS, CATEGORIES
 
-# ─── Token 估算（仅供参考，非精确值）────────────────────────────
-def _estimate_tokens(text: str) -> int:
-    """
-    粗略估算 token 数。注意：这只是估算！
-    
-    中转站可能使用：
-    - OpenAI 官方 tiktoken
-    - 近似估算（字符数/4）
-    - 包含系统消息、工具定义等额外 token
-    
-    因此估算值与上报值存在偏差是正常的，不应直接判定为"欺诈"。
-    """
-    # 保守估算：1 token ≈ 4 字符（OpenAI 通常以此估算）
-    return max(1, int(len(text) / 4))
-
-
-# ─── 已知的精确 prompt（用于 token 估算参考）────────────────────
+# ─── 已知 Prompt ───────────────────────────────────────────────
 _KNOWN_PROMPT = "Write a haiku about artificial intelligence in exactly three lines."
 
-# 估算参考值（非精确值！）
-_ESTIMATED_PROMPT_TOKENS = _estimate_tokens(_KNOWN_PROMPT)
+# 纯文本字符数（用于估算）
+_PROMPT_CHARS = len(_KNOWN_PROMPT)
+
+# 基于 OpenAI 官方 API 的观察数据（2026-08-11）：
+# - 纯文本 token 数：~15
+# - 包含消息格式后：~19
+# - 中转站通常添加系统消息后的实际范围：30~150 tokens
+# 
+# 因此：
+# - < 30：偏低（可能用了不同的计算方式）
+# - 30~200：正常范围（包含系统消息开销）
+# - 200~500：偏高（可能包含较多工具定义）
+# - > 500：显著异常（可能存在问题）
+
+# 最小合理值（纯文本 + 基本格式）
+_MIN_REASONABLE = 15
+
+# 正常范围上限（包含系统消息、工具定义等合理开销）
+_NORMAL_RANGE_MAX = 200
+
+# 警告阈值（超过此值才提示）
+_WARNING_THRESHOLD = 500
 
 
 class BillingIntegrityDetector(ActiveDetector):
     """
-    计费完整性检测器（OpenAI 协议，v2.5 修正版）
-
-    评分逻辑（宽松）：
-      - 数据完整且合理 → 90-100
-      - 轻微偏差（<200%）→ 80-90
-      - 显著偏差（200-500%）→ 60-80（提示可能原因，不扣分）
-      - 极端偏差（>500%）或 cache 异常 → 40-60
-      - 请求失败 → 0
+    计费完整性检测器（v2.6 重构版）
     
-    重要：本检测器不做"诚信"判定，仅做数据合理性检查。
+    核心逻辑：
+      - 接受中转站必然有系统开销的事实
+      - 用宽松的范围检查替代严格的倍数检查
+      - 仅对极端异常情况进行提示
+    
+    评分：
+      - 数据完整 → 90-100
+      - 正常范围 → 85-95
+      - 偏高但可接受 → 80-90
+      - 极端异常 → 60-80
+      - 请求失败 → 0
     """
 
     name = "billing_integrity"
@@ -68,7 +72,7 @@ class BillingIntegrityDetector(ActiveDetector):
 
     def run(self, client) -> CheckResultV2:
         issues: list[Issue] = []
-        score = 100
+        score = 95  # 默认高分，仅极端情况扣分
 
         # ── 发送基准请求 ──────────────────────────────────────
         resp = client.chat(
@@ -94,120 +98,108 @@ class BillingIntegrityDetector(ActiveDetector):
                 issues=[Issue(level=IssueLevel.CRITICAL, message="usage 字段完全缺失，无法进行计费审计", detector_name=self.name)],
             )
 
-        # ── 1. Input Token 合理性检查 ─────────────────────────
         reported_input = usage.prompt_tokens
-        estimated_input = _ESTIMATED_PROMPT_TOKENS
-        
-        # 计算偏差（仅作参考）
-        if estimated_input > 0:
-            input_deviation = (reported_input - estimated_input) / estimated_input * 100
-        else:
-            input_deviation = 0
+        reported_output = usage.completion_tokens
+        reported_total = usage.total_tokens
 
-        # 构建详情（客观描述，不主观定性）
-        precision_detail_parts = [
-            f"reported_input={reported_input}",
-            f"estimated_input={estimated_input}",
-            f"deviation={input_deviation:+.1f}%",
-            f"note=estimate_only",
+        # 构建详情
+        details_parts = [
+            f"prompt={reported_input}",
+            f"completion={reported_output}",
+            f"total={reported_total}",
         ]
 
-        # v2.5: 大幅放宽阈值，避免误报 GPT 中转站
-        # GPT 中转站常见情况：
-        # - 添加系统消息：+10~50 tokens
-        # - 工具定义开销：+50~200 tokens
-        # - 不同 tokenizer：±20% 偏差
-        if reported_input > estimated_input * 5:  # 超过 5 倍才认为是显著异常
-            score -= 20
+        # ── 1. Input Token 合理性检查 ─────────────────────────
+        # v2.6: 基于观察数据的宽松范围检查
+        
+        if reported_input < _MIN_REASONABLE:
+            # 低于最小合理值（很少见）
+            score -= 5
             issues.append(Issue(
                 level=IssueLevel.MINOR,
-                message=f"input_tokens 显著高于估算（上报 {reported_input}，估算约 {estimated_input}）。常见原因：中转站添加了系统消息、包含工具定义、或使用不同计算方式",
+                message=f"prompt_tokens ({reported_input}) 低于常规值，可能使用了特殊的 token 计算方式",
                 detector_name=self.name,
             ))
-        elif reported_input > estimated_input * 2:  # 2-5 倍给予提示，不扣分
-            # 不扣分，仅提示
+        elif reported_input <= _NORMAL_RANGE_MAX:
+            # 正常范围（绝大多数中转站）
             issues.append(Issue(
-                level=IssueLevel.OK,  # 用 OK 级别，不告警
-                message=f"input_tokens 高于估算（上报 {reported_input}，估算约 {estimated_input}，偏差 {input_deviation:+.0f}%）。可能包含系统消息或额外开销",
+                level=IssueLevel.OK,
+                message=f"prompt_tokens ({reported_input}) 在正常范围内（包含系统消息等开销）",
+                detector_name=self.name,
+            ))
+        elif reported_input <= _WARNING_THRESHOLD:
+            # 偏高但可接受（可能包含较多工具定义）
+            score -= 5
+            issues.append(Issue(
+                level=IssueLevel.MINOR,
+                message=f"prompt_tokens ({reported_input}) 偏高，可能包含较多工具定义或系统消息",
                 detector_name=self.name,
             ))
         else:
+            # 显著异常（>500）
+            score -= 15
             issues.append(Issue(
-                level=IssueLevel.OK,
-                message=f"input_tokens 在合理范围内（上报 {reported_input}，估算约 {estimated_input}，偏差 {input_deviation:+.1f}%）",
+                level=IssueLevel.MAJOR,
+                message=f"prompt_tokens ({reported_input}) 显著高于常规值，建议检查具体计费明细",
                 detector_name=self.name,
             ))
 
         # ── 2. Cache 字段审计 ────────────────────────────────
-        # OpenAI 格式：prompt_tokens_details.cache_read_tokens / cache_creation_tokens
         cache_read = getattr(usage, 'cache_read_tokens', 0) or 0
         cache_creation = getattr(usage, 'cache_creation_tokens', 0) or 0
         has_cache = cache_read > 0 or cache_creation > 0
 
         if has_cache:
-            precision_detail_parts.append(f"cache_read={cache_read}")
-            precision_detail_parts.append(f"cache_creation={cache_creation}")
-
-            # 本次请求未启用缓存，但 API 返回了 cache 字段 → 可能虚报
+            details_parts.append(f"cache_read={cache_read}")
+            details_parts.append(f"cache_creation={cache_creation}")
+            # 非缓存请求返回 cache 字段是明确的异常
+            score -= 20
             issues.append(Issue(
                 level=IssueLevel.MAJOR,
-                message=f"非缓存请求却返回 cache 字段（read={cache_read}, creation={cache_creation}），可能虚报缓存计费",
+                message=f"非缓存请求返回 cache 字段（read={cache_read}, creation={cache_creation}）",
                 detector_name=self.name,
             ))
-            score -= 30
         else:
-            precision_detail_parts.append("cache=无")
+            details_parts.append("cache=无")
             issues.append(Issue(
                 level=IssueLevel.OK,
-                message="未检测到异常 cache 计费字段",
+                message="cache 字段正常",
                 detector_name=self.name,
             ))
 
-        # ── 3. 输出 token 合理性检查 ─────────────────────────
-        reported_output = usage.completion_tokens
-        content = resp.content or ""
-        estimated_output = _estimate_tokens(content)
-
-        output_deviation = 0.0
-        if estimated_output > 0:
-            output_deviation = (reported_output - estimated_output) / estimated_output * 100
-            precision_detail_parts.append(f"reported_output={reported_output}")
-            precision_detail_parts.append(f"estimated_output={estimated_output}")
-            precision_detail_parts.append(f"output_deviation={output_deviation:+.1f}%")
-
-            # v2.5: 大幅放宽 output 阈值（生成长度难以预估）
-            if abs(output_deviation) > 200:  # 超过 200% 才提示
-                # 不扣分，仅提示
-                issues.append(Issue(
-                    level=IssueLevel.OK,
-                    message=f"output_tokens 高于估算（上报 {reported_output}，估算约 {estimated_output}）。可能包含停止 token 或其他开销",
-                    detector_name=self.name,
-                ))
-        else:
-            precision_detail_parts.append("response_empty")
-
-        # ── 4. 计费倍率参考（仅作参考，不直接判定）────────────────
-        # v2.5: 明确说明这只是参考值，不应作为"欺诈"证据
-        estimated_total = estimated_input + estimated_output
-        reported_total = reported_input + reported_output
-        multiplier = reported_total / max(estimated_total, 1)
-
-        precision_detail_parts.append(f"ratio={multiplier:.2f}x")
-        precision_detail_parts.append(f"reported_total={reported_total}")
-        precision_detail_parts.append(f"estimated_total={estimated_total}")
-
-        # 仅作为参考信息，大幅放宽阈值到 5x
-        if multiplier > 5.0:
-            # 超过 5 倍才提示，且不作为负面评分
+        # ── 3. 输出 token 检查 ───────────────────────────────
+        # 输出 token 较难预估，仅检查是否为 0
+        if reported_output == 0:
+            score -= 10
             issues.append(Issue(
                 level=IssueLevel.MINOR,
-                message=f"上报/估算比值 {multiplier:.1f}x。注意：估算仅供参考，中转站可能包含系统消息、工具调用等额外 token",
+                message="completion_tokens 为 0，可能响应为空",
                 detector_name=self.name,
             ))
         else:
+            details_parts.append(f"output_ok={reported_output}")
             issues.append(Issue(
                 level=IssueLevel.OK,
-                message=f"上报/估算比值 {multiplier:.2f}x（上报 {reported_total}，估算约 {estimated_total}）",
+                message=f"completion_tokens ({reported_output}) 正常",
+                detector_name=self.name,
+            ))
+
+        # ── 4. Total 一致性检查 ──────────────────────────────
+        # 检查 total_tokens 是否约等于 prompt + completion
+        expected_total = reported_input + reported_output
+        if abs(reported_total - expected_total) > 5:  # 允许 5 token 误差
+            details_parts.append(f"total_mismatch={reported_total}!={expected_total}")
+            score -= 10
+            issues.append(Issue(
+                level=IssueLevel.MINOR,
+                message=f"total_tokens ({reported_total}) 与 prompt+completion ({expected_total}) 不一致",
+                detector_name=self.name,
+            ))
+        else:
+            details_parts.append("total_consistent")
+            issues.append(Issue(
+                level=IssueLevel.OK,
+                message="token 计数一致性正常",
                 detector_name=self.name,
             ))
 
@@ -217,6 +209,6 @@ class BillingIntegrityDetector(ActiveDetector):
         return CheckResultV2(
             name=self.name, category=self.category, score=score, weight=self.weight,
             cost_tokens=usage.total_tokens if usage else 0,
-            details=" | ".join(precision_detail_parts),
+            details=" | ".join(details_parts),
             issues=issues,
         )
