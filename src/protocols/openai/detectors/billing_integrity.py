@@ -1,16 +1,16 @@
 """
-billing_integrity - 计费完整性检测（OpenAI 协议，v2.6 重构版）
+billing_integrity - 计费完整性检测（OpenAI 协议，v2.7 合并版）
 
-核心变更（2026-08-11）：
-  - 重构算法逻辑：从"固定阈值"改为"对照组基准"
-  - 认识到中转站的 prompt_tokens 必然包含系统消息等开销
-  - 用"相对官方 API 的偏差"替代"相对于纯文本的倍数"
-  - 大幅放宽判定标准，避免误报
+核心变更（2026-08-14）：
+  - 合并 token_billing 的核心检查逻辑（completion_tokens 合理性）
+  - 降低 max_tokens 从 100 → 60，减少 output token 消耗
+  - 保持 v2.6 的范围检查策略，避免误报
 
 检测逻辑：
-  1. 估算最小理论值（纯文本）
-  2. 接受合理开销范围（系统消息等）
-  3. 仅当显著超出合理范围时才提示
+  1. Input token 范围检查（基于观察数据）
+  2. Cache 字段审计
+  3. Output token 合理性检查（从 token_billing 移植）
+  4. Total 一致性检查（prompt + completion ≈ total）
 
 注意：本检测器仅检查数据合理性，不做诚信判定。
 """
@@ -18,6 +18,7 @@ billing_integrity - 计费完整性检测（OpenAI 协议，v2.6 重构版）
 from src.core.detector_base import ActiveDetector
 from src.core.models import CheckResultV2, Issue, IssueLevel
 from ..config import WEIGHTS, CATEGORIES
+from src.utils.token_counter import count_tokens
 
 # ─── 已知 Prompt ───────────────────────────────────────────────
 _KNOWN_PROMPT = "Write a haiku about artificial intelligence in exactly three lines."
@@ -68,7 +69,7 @@ class BillingIntegrityDetector(ActiveDetector):
     weight = WEIGHTS["billing_integrity"]
     modes = ["standard", "full"]
     timeout = 15
-    estimated_tokens = 2000
+    estimated_tokens = 1500  # v2.7: 降低预估（max_tokens 从 100 降到 60）
 
     def run(self, client) -> CheckResultV2:
         issues: list[Issue] = []
@@ -77,7 +78,7 @@ class BillingIntegrityDetector(ActiveDetector):
         # ── 发送基准请求 ──────────────────────────────────────
         resp = client.chat(
             messages=[{"role": "user", "content": _KNOWN_PROMPT}],
-            max_tokens=100,
+            max_tokens=60,  # v2.7: 从 100 降到 60，减少 output token
             detector_name=self.name,
         )
 
@@ -167,8 +168,10 @@ class BillingIntegrityDetector(ActiveDetector):
                 detector_name=self.name,
             ))
 
-        # ── 3. 输出 token 检查 ───────────────────────────────
-        # 输出 token 较难预估，仅检查是否为 0
+        # ── 3. 输出 token 合理性检查（v2.7: 从 token_billing 合并） ───
+        content = resp.content or ""
+        estimated_output_tokens = count_tokens(content)
+
         if reported_output == 0:
             score -= 10
             issues.append(Issue(
@@ -176,6 +179,23 @@ class BillingIntegrityDetector(ActiveDetector):
                 message="completion_tokens 为 0，可能响应为空",
                 detector_name=self.name,
             ))
+        elif estimated_output_tokens > 0 and reported_output < estimated_output_tokens * 0.3:
+            # 实际 token 远少于估算，可能虚报
+            score -= 15
+            issues.append(Issue(
+                level=IssueLevel.MAJOR,
+                message=f"completion_tokens ({reported_output}) 远少于估算 ({estimated_output_tokens})，可能虚报",
+                detector_name=self.name,
+            ))
+            details_parts.append(f"output_low={reported_output}<{estimated_output_tokens}")
+        elif estimated_output_tokens > 0 and reported_output > estimated_output_tokens * 5:
+            # 实际 token 远多于估算，仅提示
+            issues.append(Issue(
+                level=IssueLevel.MINOR,
+                message=f"completion_tokens ({reported_output}) 远多于估算 ({estimated_output_tokens})",
+                detector_name=self.name,
+            ))
+            details_parts.append(f"output_high={reported_output}>{estimated_output_tokens}")
         else:
             details_parts.append(f"output_ok={reported_output}")
             issues.append(Issue(

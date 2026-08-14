@@ -110,6 +110,18 @@ const hide = (el) => {
 
   // ============ Hero Tab Switching ============
   // 模型测评已迁移至 /evaluation 独立页面，这里仅处理 API 检测页内逻辑
+
+  // v2.8: 恢复检测页到初始状态（配置步骤可见，其他隐藏）
+  function resetToDetectionHome() {
+    show($('step-config'));
+    hide($('step-models'));
+    hide($('step-mode'));
+    hide($('step-start'));
+    const c = $('results-container');
+    if (c) c.innerHTML = '';
+    hide($('step-results'));
+  }
+
   window.switchTab = function(tab) {
     if (tab === 'evaluation') {
       window.location.href = '/evaluation';
@@ -132,7 +144,8 @@ const hide = (el) => {
   };
 
   window.scrollToConfig = function() {
-    // 确保在 API 检测页面
+    // 确保在 API 检测页面，并恢复配置步骤显示
+    resetToDetectionHome();
     window.switchTab('detection');
     // 等待切换完成后再滚动
     setTimeout(() => {
@@ -144,13 +157,15 @@ const hide = (el) => {
           setTimeout(() => baseUrlInput.focus(), 600);
         }
       }
-    }, 100);
+    }, 150);
   };
 
   function initHeroTabs() {
     const tabDetection = $('tab-detection');
     if (tabDetection) {
       tabDetection.addEventListener('click', () => {
+        // v2.8: 点击 API 检测 tab 时恢复配置步骤
+        resetToDetectionHome();
         window.switchTab('detection');
       });
     }
@@ -160,6 +175,8 @@ const hide = (el) => {
       window.location.href = '/evaluation';
     };
     window.goToHome = function() {
+      // v2.8: 返回首页时恢复配置步骤
+      resetToDetectionHome();
       window.switchTab('detection');
     };
   }
@@ -1887,5 +1904,17 @@ document.addEventListener('DOMContentLoaded', () => {
   initMouseTracking();
   initScrollProgress();
   initTouchOptimizations();
+
+  // v2.8: 检测 URL hash，支持从测评页"返回检测"直接跳转到配置区
+  if (location.hash === '#config') {
+    // 清除 hash，避免刷新时重复滚动
+    history.replaceState(null, '', location.pathname);
+    // 延迟调用确保所有初始化完成
+    setTimeout(() => {
+      if (typeof window.scrollToConfig === 'function') {
+        window.scrollToConfig();
+      }
+    }, 300);
+  }
 });
 })();

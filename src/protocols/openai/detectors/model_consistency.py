@@ -46,8 +46,8 @@ class ModelConsistencyDetector(ActiveDetector):
     category = CATEGORIES["model_consistency"]
     weight = WEIGHTS["model_consistency"]
     modes = ["quick", "standard", "full"]
-    timeout = 45  # v2.7: 3次请求需要更多时间
-    estimated_tokens = 600  # v2.7: 3 次请求 × ~200 tokens
+    timeout = 35  # v2.8: 2次请求，减少超时
+    estimated_tokens = 400  # v2.8: 2 次请求 × ~200 tokens
 
     # v2.7: 创意写作问题
     QUESTION = HAIKU_QUESTION
@@ -58,8 +58,8 @@ class ModelConsistencyDetector(ActiveDetector):
         total_tokens = 0
         errors: list[str] = []
 
-        # v2.7: 3 次相同请求（替代之前3次不同数学题）
-        for i in range(3):
+        # v2.8: 2 次相同请求（从 3 次降为 2 次，减少 token 消耗）
+        for i in range(2):
             resp = client.chat(
                 messages=[{"role": "user", "content": self.QUESTION}],
                 max_tokens=60,
@@ -192,7 +192,7 @@ class ModelConsistencyDetector(ActiveDetector):
         status = "pass" if final_score >= 50 else "fail"
 
         details = (
-            f"3次请求 | "
+            f"2次请求 | "
             f"内容评分: 一致性={c_score:.0f}(40%) "
             f"特征={f_score:.0f}(30%) "
             f"语义={s_score:.0f}(30%) "

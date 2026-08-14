@@ -110,15 +110,15 @@ DETECTOR_MODES = {
     "protocol": ["quick", "standard", "full"],
     "integrity": ["standard", "full"],
     "structured_output": ["full"],
-    "token_billing": ["standard", "full"],
+    "token_billing": ["full"],  # v2.8: 从 standard 移到 full，减少 standard 模式请求数
     "billing_integrity": ["standard", "full"],
 }
 
 # quick 模式检测器列表
 QUICK_DETECTORS = ["basic_request", "model_consistency", "protocol"]
 
-# standard 模式检测器列表
-STANDARD_DETECTORS = QUICK_DETECTORS + ["function_calling", "integrity", "token_billing", "billing_integrity"]
+# standard 模式检测器列表（v2.8: 移除 token_billing，其检查逻辑已合并到 billing_integrity）
+STANDARD_DETECTORS = QUICK_DETECTORS + ["function_calling", "integrity", "billing_integrity"]
 
 # full 模式检测器列表
-FULL_DETECTORS = STANDARD_DETECTORS + ["structured_output"]  # long_context 单独控制
+FULL_DETECTORS = STANDARD_DETECTORS + ["structured_output", "token_billing"]  # long_context 单独控制
