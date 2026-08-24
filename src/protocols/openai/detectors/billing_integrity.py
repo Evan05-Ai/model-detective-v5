@@ -69,7 +69,7 @@ class BillingIntegrityDetector(ActiveDetector):
     weight = WEIGHTS["billing_integrity"]
     modes = ["standard", "full"]
     timeout = 15
-    estimated_tokens = 1500  # v2.7: 降低预估（max_tokens 从 100 降到 60）
+    estimated_tokens = 5000  # v2.8: 1 次请求 × ~5000 tokens（GPT中转站系统消息开销）
 
     def run(self, client) -> CheckResultV2:
         issues: list[Issue] = []

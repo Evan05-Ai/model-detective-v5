@@ -17,6 +17,9 @@
     protoFilter: 'all',
     completeHandled: false,
     currentRelayUrl: '',
+    // v2.8: SSE 流管理
+    currentEventSource: null,      // 当前活动的 EventSource
+    currentIntervalId: null,       // 当前活动的 fallback interval
     // Evaluation state
     evalBaseUrl: '',
     evalApiKey: '',
@@ -28,6 +31,8 @@
     evalDifficulty: 'quick',
     evalProtoFilter: 'all',
     evalCompleteHandled: false,
+    evalEventSource: null,         // 测评 SSE 流
+    evalIntervalId: null,          // 测评 fallback interval
   };
 
   // ============ LocalStorage Helper ============
@@ -113,6 +118,24 @@ const hide = (el) => {
 
   // v2.8: 恢复检测页到初始状态（配置步骤可见，其他隐藏）
   function resetToDetectionHome() {
+    // v2.8: 停止正在进行的 SSE 流和 fallback 轮询
+    if (State.currentEventSource) {
+      State.currentEventSource.close();
+      State.currentEventSource = null;
+    }
+    if (State.currentIntervalId) {
+      clearInterval(State.currentIntervalId);
+      State.currentIntervalId = null;
+    }
+    if (State.evalEventSource) {
+      State.evalEventSource.close();
+      State.evalEventSource = null;
+    }
+    if (State.evalIntervalId) {
+      clearInterval(State.evalIntervalId);
+      State.evalIntervalId = null;
+    }
+    
     show($('step-config'));
     hide($('step-models'));
     hide($('step-mode'));
@@ -797,6 +820,7 @@ return;
   function pollStatus(jobId, models) {
     if (typeof EventSource !== 'undefined') {
       const es = new EventSource(`/api/status/${jobId}`);
+      State.currentEventSource = es;  // v2.8: 存储 SSE 引用
       let errCount = 0;
 
       es.addEventListener('progress', (e) => {
@@ -806,11 +830,16 @@ return;
       es.addEventListener('complete', (e) => {
         const data = JSON.parse(e.data);
         es.close();
+        State.currentEventSource = null;  // v2.8: 清除引用
         handleComplete(data);
       });
       es.addEventListener('error', () => {
         errCount++;
-        if (errCount > 3) { es.close(); pollFallback(jobId, models); }
+        if (errCount > 3) { 
+          es.close();
+          State.currentEventSource = null;  // v2.8: 清除引用
+          pollFallback(jobId, models); 
+        }
       });
     } else {
       pollFallback(jobId, models);
@@ -825,6 +854,7 @@ return;
         const data = await resp.json();
         if (data.status === 'done' || data.status === 'error') {
           clearInterval(iv);
+          State.currentIntervalId = null;  // v2.8: 清除引用
           (data.progress || []).slice(lastIdx).forEach(e => handleProgress(e, models));
           if (!State.completeHandled) handleComplete(data);
           return;
@@ -834,6 +864,7 @@ return;
         evts.forEach(e => handleProgress(e, models));
       } catch (e) { /* keep polling */ }
     }, 1000);
+    State.currentIntervalId = iv;  // v2.8: 存储 interval 引用
   }
 
   // ============ Progress Handler ============
@@ -1438,6 +1469,7 @@ async function startEvaluation() {
   function pollEvalStatus(jobId, models) {
     if (typeof EventSource !== 'undefined') {
       const es = new EventSource(`/api/evaluate/status/${jobId}`);
+      State.evalEventSource = es;  // v2.8: 存储 SSE 引用
       let errCount = 0;
 
       es.addEventListener('progress', (e) => {
@@ -1447,11 +1479,16 @@ async function startEvaluation() {
       es.addEventListener('complete', (e) => {
         const data = JSON.parse(e.data);
         es.close();
+        State.evalEventSource = null;  // v2.8: 清除引用
         handleEvalComplete(data);
       });
       es.addEventListener('error', () => {
         errCount++;
-        if (errCount > 3) { es.close(); pollEvalFallback(jobId, models); }
+        if (errCount > 3) { 
+          es.close();
+          State.evalEventSource = null;  // v2.8: 清除引用
+          pollEvalFallback(jobId, models); 
+        }
       });
     } else {
       pollEvalFallback(jobId, models);
@@ -1466,6 +1503,7 @@ async function startEvaluation() {
         const data = await resp.json();
         if (data.status === 'done' || data.status === 'error') {
           clearInterval(iv);
+          State.evalIntervalId = null;  // v2.8: 清除引用
           (data.progress || []).slice(lastIdx).forEach(e => handleEvalProgress(e, models));
           if (!State.evalCompleteHandled) handleEvalComplete(data);
           return;
@@ -1475,6 +1513,7 @@ async function startEvaluation() {
         evts.forEach(e => handleEvalProgress(e, models));
       } catch (e) { /* keep polling */ }
     }, 1000);
+    State.evalIntervalId = iv;  // v2.8: 存储 interval 引用
   }
 
   // ============ Evaluation: Progress Handler ============

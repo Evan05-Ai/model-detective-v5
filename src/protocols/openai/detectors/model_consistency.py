@@ -47,7 +47,7 @@ class ModelConsistencyDetector(ActiveDetector):
     weight = WEIGHTS["model_consistency"]
     modes = ["quick", "standard", "full"]
     timeout = 35  # v2.8: 2次请求，减少超时
-    estimated_tokens = 400  # v2.8: 2 次请求 × ~200 tokens
+    estimated_tokens = 9000  # v2.8: 2 次请求 × ~4500 tokens（GPT中转站系统消息开销）
 
     # v2.7: 创意写作问题
     QUESTION = HAIKU_QUESTION

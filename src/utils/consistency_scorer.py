@@ -51,10 +51,10 @@ HAIKU_QUESTION = "Write a haiku about AI (3 lines, 5-7-5 syllables)."
 def calc_answer_consistency(responses: list[str]) -> float:
     """答案一致性评分 (40%)
 
-    v2.7 渐进式评分，消除二元化跳跃：
+    v2.8 支持任意请求数（2次或3次）：
     - 完全一致 -> 95
-    - 2种变体 -> 基于字符串相似度在 55-78 之间渐进
-    - 3种变体 -> 基于两两平均相似度在 30-55 之间渐进
+    - 2次请求2种变体 -> 基于字符串相似度在 55-78 之间渐进
+    - 3次请求2种/3种变体 -> 基于两两平均相似度在 30-55 之间渐进
     """
     unique = set(responses)
     n = len(responses)
@@ -62,18 +62,19 @@ def calc_answer_consistency(responses: list[str]) -> float:
     if len(unique) == 1:
         return 95.0
 
-    if len(unique) == 2:
-        unique_list = list(unique)
-        sim = _string_similarity(unique_list[0], unique_list[1])
-        return 55.0 + sim * 23.0
-
-    # 3种变体
+    # 计算所有两两相似度
     sims = []
     for i in range(n):
         for j in range(i + 1, n):
             sims.append(_string_similarity(responses[i], responses[j]))
     avg_sim = sum(sims) / len(sims) if sims else 0.0
-    return 30.0 + avg_sim * 25.0
+
+    if len(unique) == 2 and n == 2:
+        # 2次请求2种变体：渐进评分
+        return 55.0 + avg_sim * 23.0
+    else:
+        # 3+次请求或多种变体：更严格评分
+        return 30.0 + avg_sim * 25.0
 
 
 def calc_feature_stability(responses: list[str]) -> float:
@@ -180,34 +181,35 @@ def generate_issues(
     semantic: float,
     detector_name: str,
 ) -> list:
-    """根据评分生成 Issues"""
+    """根据评分生成 Issues
+    
+    v2.8: 支持任意请求数（2次或3次）
+    """
     from src.core.models import Issue, IssueLevel
 
     issues = []
     unique = set(responses)
+    n = len(responses)
 
-    if len(unique) >= 3:
-        issues.append(
-            Issue(
-                level=IssueLevel.MAJOR,
-                message=(
-                    f"3次请求返回3种完全不同的响应，"
-                    f"temperature=0时不应如此不稳定"
-                ),
-                detector_name=detector_name,
-            )
-        )
-    elif len(unique) == 2:
-        issues.append(
-            Issue(
-                level=IssueLevel.MINOR,
-                message=(
-                    f"3次请求返回2种不同响应，"
-                    f"可能存在轻微不一致（格式差异或采样波动）"
-                ),
-                detector_name=detector_name,
-            )
-        )
+    # 根据不一致程度和请求数确定 issue 级别
+    if len(unique) >= 2:
+        if n == 2 and len(unique) == 2:
+            # 2次请求返回2种不同响应 - 严重不一致
+            level = IssueLevel.MAJOR
+            msg = f"2次请求返回2种不同响应，temperature=0时应保持稳定"
+        elif len(unique) >= 3:
+            # 3次请求返回3种完全不同的响应
+            level = IssueLevel.MAJOR
+            msg = f"{n}次请求返回{len(unique)}种完全不同的响应，temperature=0时不应如此不稳定"
+        else:
+            # 3次请求返回2种不同响应
+            level = IssueLevel.MINOR
+            msg = f"{n}次请求返回{len(unique)}种不同响应，可能存在轻微不一致（格式差异或采样波动）"
+        issues.append(Issue(
+            level=level,
+            message=msg,
+            detector_name=detector_name,
+        ))
 
     if feature < 50:
         issues.append(

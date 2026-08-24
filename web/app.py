@@ -117,6 +117,47 @@ def _model_probe_urls(base_url: str) -> list[str]:
             candidates.append(full)
     return candidates
 
+
+# ── SSRF Protection (v2.8) ────────────────────────────────────
+# 禁止访问内网地址，防止 SSRF 攻击
+_FORBIDDEN_URL_PATTERNS = [
+    "http://127.",
+    "http://10.",
+    "http://192.168.",
+    "http://169.254.",
+    "http://0.",
+    "http://localhost",
+    "http://[::1]",
+    "https://127.",
+    "https://10.",
+    "https://192.168.",
+    "https://169.254.",
+    "https://0.",
+    "https://localhost",
+    "https://[::1]",
+]
+
+
+def _validate_base_url_no_ssrf(base_url: str) -> tuple[bool, str]:
+    """验证 base_url 不会导致 SSRF 攻击
+    
+    Returns:
+        (is_valid, error_message)
+    """
+    url_lower = base_url.lower()
+    
+    # 检查是否包含禁止的内网地址
+    for forbidden in _FORBIDDEN_URL_PATTERNS:
+        if url_lower.startswith(forbidden):
+            return False, f"禁止访问内网地址: {base_url}"
+    
+    # 检查是否包含 localhost
+    if "localhost" in url_lower:
+        return False, "禁止访问 localhost"
+    
+    return True, ""
+
+
 # ── Probe endpoint ──────────────────────────────────────────
 
 import requests as _requests
@@ -129,9 +170,13 @@ def api_probe():
     api_key = (data.get("api_key") or "").strip()
 
     if not base_url:
-        return jsonify({"ok": False, "error": "base_url is required"}), 200
+        return jsonify({"ok": False, "error": "base_url is required"}), 400
     if not base_url.startswith(("http://", "https://")):
-        return jsonify({"ok": False, "error": "base_url must start with http(s)://"}), 200
+        return jsonify({"ok": False, "error": "base_url must start with http(s)://"}), 400
+    # v2.8: SSRF 防护
+    is_valid, err = _validate_base_url_no_ssrf(base_url)
+    if not is_valid:
+        return jsonify({"ok": False, "error": err}), 400
     if not api_key or len(api_key) < 8:
         return jsonify({"ok": False, "error": "api_key looks invalid"}), 200
 
@@ -735,6 +780,10 @@ def api_evaluate():
     # 验证
     if not base_url.startswith(("http://", "https://")):
         return jsonify({"ok": False, "error": "base_url must start with http(s)://"}), 400
+    # v2.8: SSRF 防护
+    is_valid, err = _validate_base_url_no_ssrf(base_url)
+    if not is_valid:
+        return jsonify({"ok": False, "error": err}), 400
     if not api_key or len(api_key) < 8:
         return jsonify({"ok": False, "error": "api_key looks invalid"}), 400
     if not models or not isinstance(models, list):
