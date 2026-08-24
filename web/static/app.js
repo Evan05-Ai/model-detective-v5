@@ -753,6 +753,16 @@ return;
     const models = [...State.selectedModels];
     if (models.length === 0) return;
 
+    // v2.8: 关闭任何正在进行的 SSE 流
+    if (State.currentEventSource) {
+      State.currentEventSource.close();
+      State.currentEventSource = null;
+    }
+    if (State.currentIntervalId) {
+      clearInterval(State.currentIntervalId);
+      State.currentIntervalId = null;
+    }
+
     // 优先使用输入框的值（因为探测阶段会更新输入框为 effective_base_url）
     const baseUrl = $('base_url').value.trim();
     const apiKey = $('api_key').value.trim();
@@ -1370,6 +1380,24 @@ async function startEvaluation() {
     // 优先使用输入框的值（因为探测阶段会更新输入框为 effective_base_url）
     const baseUrl = $('eval-base_url').value.trim();
     const apiKey = $('eval-api_key').value.trim();
+
+    // v2.8: 关闭任何正在进行的 SSE 流
+    if (State.evalEventSource) {
+      State.evalEventSource.close();
+      State.evalEventSource = null;
+    }
+    if (State.evalIntervalId) {
+      clearInterval(State.evalIntervalId);
+      State.evalIntervalId = null;
+    }
+    if (State.currentEventSource) {
+      State.currentEventSource.close();
+      State.currentEventSource = null;
+    }
+    if (State.currentIntervalId) {
+      clearInterval(State.currentIntervalId);
+      State.currentIntervalId = null;
+    }
 
     if (!baseUrl.startsWith('http')) {
       alert('请填写有效的中转站网址 (Base URL)');
