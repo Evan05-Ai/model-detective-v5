@@ -130,6 +130,37 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- 按次收费中转站选项 (v2.8) -->
+                <div class="pay-per-call-section">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="pay-per-call">
+                        <span class="checkmark"></span>
+                        <span>按次收费中转站（每次请求都会扣费）</span>
+                    </label>
+                    <div class="pay-per-call-options" id="pay-per-call-options" hidden>
+                        <div class="field-row">
+                            <div class="field">
+                                <label for="cost-per-request">单次请求成本 (USD)</label>
+                                <input type="number" id="cost-per-request" min="0" step="0.01" value="0.50" placeholder="0.50">
+                            </div>
+                            <div class="field">
+                                <label>预计成本</label>
+                                <div class="cost-estimate" id="cost-estimate">
+                                    $1.50（3次请求）
+                                </div>
+                            </div>
+                        </div>
+                        <div class="pay-per-call-warning">
+                            <span>⚠️</span>
+                            <span>按次收费中转站将跳过探测阶段，您需要手动输入模型名称。检测将只运行核心检测器以降低成本。</span>
+                        </div>
+                        <button class="btn-secondary btn-sm" id="fetch-models-btn" type="button">
+                            📋 获取模型列表（$0.50）
+                        </button>
+                    </div>
+                </div>
+                
                 <div class="probe-status" id="probe-pill" hidden></div>
                 
                 <!-- 探测成功后显示的内容 -->

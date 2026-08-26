@@ -1934,3 +1934,127 @@ textarea {
 }
 .autocomplete-item:hover { background: var(--bg-3); }
 .autocomplete-item:last-child { border-bottom: none; }
+
+/* ═════════ 按次收费中转站 (v2.8) ═════════ */
+.pay-per-call-section {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, rgba(255, 165, 2, 0.08) 0%, rgba(255, 107, 122, 0.08) 100%);
+    border: 1px solid rgba(255, 165, 2, 0.2);
+    border-radius: var(--radius-sm);
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--txt-1);
+    margin-bottom: 0.75rem;
+}
+
+.checkbox-label input[type="checkbox"] {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    appearance: none;
+    background: var(--bg-2);
+    border: 2px solid var(--glass-border-2);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all var(--t);
+}
+
+.checkbox-label input[type="checkbox"]:checked {
+    background: var(--yellow);
+    border-color: var(--yellow);
+}
+
+.checkbox-label input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #fff;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.checkmark {
+    display: none;
+}
+
+.pay-per-call-options {
+    margin-top: 0.75rem;
+}
+
+.pay-per-call-options .field-row {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.pay-per-call-options .field {
+    flex: 1;
+}
+
+.pay-per-call-options .field label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--txt-2);
+    margin-bottom: 0.35rem;
+}
+
+.pay-per-call-options input[type="number"] {
+    width: 100%;
+    padding: 0.65rem 0.85rem;
+    background: var(--bg-2);
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--radius-sm);
+    color: var(--txt-1);
+    font-size: 0.95rem;
+    transition: all var(--t);
+}
+
+.pay-per-call-options input[type="number"]:focus {
+    outline: none;
+    border-color: var(--yellow);
+    box-shadow: 0 0 0 3px rgba(255, 165, 2, 0.15);
+}
+
+.cost-estimate {
+    display: flex;
+    align-items: center;
+    height: 42px;
+    padding: 0 0.85rem;
+    background: linear-gradient(135deg, rgba(255, 165, 2, 0.1) 0%, rgba(255, 107, 122, 0.1) 100%);
+    border: 1px solid rgba(255, 165, 2, 0.2);
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    color: var(--yellow);
+    font-size: 0.95rem;
+}
+
+.pay-per-call-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: rgba(255, 165, 2, 0.05);
+    border: 1px solid rgba(255, 165, 2, 0.15);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    color: var(--txt-2);
+    margin-bottom: 0.75rem;
+}
+
+.pay-per-call-warning span:first-child {
+    font-size: 1.1rem;
+}
+
+#fetch-models-btn {
+    width: 100%;
+    margin-top: 0.25rem;
+}

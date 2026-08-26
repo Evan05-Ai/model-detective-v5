@@ -17,6 +17,9 @@
     protoFilter: 'all',
     completeHandled: false,
     currentRelayUrl: '',
+    // v2.8: 按次收费中转站支持
+    payPerCall: false,              // 是否按次收费模式
+    costPerRequest: 0.5,            // 单次请求成本（美元）
     // v2.8: SSE 流管理
     currentEventSource: null,      // 当前活动的 EventSource
     currentIntervalId: null,       // 当前活动的 fallback interval
@@ -744,6 +747,103 @@ return;
     `;
   }
 
+  // ============ Init: Pay Per Call (v2.8) ============
+  function initPayPerCall() {
+    const checkbox = $('pay-per-call');
+    const options = $('pay-per-call-options');
+    const costInput = $('cost-per-request');
+    const costEstimate = $('cost-estimate');
+    const fetchModelsBtn = $('fetch-models-btn');
+    const modeCards = document.querySelectorAll('.mode-card');
+    
+    if (!checkbox) return;
+    
+    // 切换按次收费模式
+    checkbox.addEventListener('change', () => {
+      State.payPerCall = checkbox.checked;
+      if (options) {
+        options.hidden = !checkbox.checked;
+      }
+      
+      // 自动切换到 quick 模式（成本最低）
+      if (checkbox.checked) {
+        State.mode = 'quick';
+        modeCards.forEach(card => {
+          card.classList.remove('active');
+          if (card.dataset.mode === 'quick') {
+            card.classList.add('active');
+          }
+        });
+        updateCostEstimate();
+      }
+      
+      // 更新探测逻辑
+      if (typeof onInputChange === 'function') {
+        onInputChange();
+      }
+    });
+    
+    // 更新成本预估
+    function updateCostEstimate() {
+      const cost = parseFloat(costInput?.value) || 0.5;
+      const requestCount = State.mode === 'quick' ? 3 : 4;
+      const total = cost * requestCount;
+      if (costEstimate) {
+        costEstimate.textContent = `$${total.toFixed(2)}（${requestCount}次请求）`;
+      }
+      State.costPerRequest = cost;
+    }
+    
+    if (costInput) {
+      costInput.addEventListener('input', updateCostEstimate);
+    }
+    
+    // 获取模型列表按钮
+    if (fetchModelsBtn) {
+      fetchModelsBtn.addEventListener('click', async () => {
+        const baseUrl = $('base_url')?.value.trim();
+        const apiKey = $('api_key')?.value.trim();
+        
+        if (!baseUrl || !apiKey) {
+          alert('请先填写 Base URL 和 API Key');
+          return;
+        }
+        
+        const cost = parseFloat(costInput?.value) || 0.5;
+        if (!confirm(`获取模型列表将花费 $${cost.toFixed(2)}，是否继续？`)) {
+          return;
+        }
+        
+        fetchModelsBtn.disabled = true;
+        fetchModelsBtn.textContent = '获取中...';
+        
+        try {
+          const resp = await fetch('/api/probe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ base_url: baseUrl, api_key: apiKey })
+          });
+          const data = await resp.json();
+          
+          if (data.ok) {
+            alert(`成功获取 ${data.models?.length || 0} 个模型`);
+            // 显示模型选择界面
+            if (typeof onInputChange === 'function') {
+              onInputChange();
+            }
+          } else {
+            alert(`获取失败: ${data.error}`);
+          }
+        } catch (e) {
+          alert(`请求失败: ${e.message}`);
+        } finally {
+          fetchModelsBtn.disabled = false;
+          fetchModelsBtn.textContent = '📋 获取模型列表';
+        }
+      });
+    }
+  }
+
   // ============ Start Detection ============
   function initStart() {
     $('start-btn').addEventListener('click', startDetection);
@@ -752,6 +852,17 @@ return;
   async function startDetection() {
     const models = [...State.selectedModels];
     if (models.length === 0) return;
+
+    // v2.8: 按次收费模式成本确认
+    if (State.payPerCall) {
+      const cost = State.costPerRequest || 0.5;
+      const requestCount = State.mode === 'quick' ? 3 : 4;
+      const totalCost = cost * requestCount;
+      
+      if (!confirm(`⚠️ 按次收费中转站检测\n\n• 请求数: ${requestCount} 次\n• 单次成本: $${cost.toFixed(2)}\n• 预计总成本: $${totalCost.toFixed(2)}\n\n确认开始检测？`)) {
+        return;
+      }
+    }
 
     // v2.8: 关闭任何正在进行的 SSE 流
     if (State.currentEventSource) {
@@ -803,6 +914,8 @@ return;
           api_key: apiKey,
           models,
           mode: State.mode,
+          pay_per_call: State.payPerCall,  // v2.8: 按次收费模式
+          cost_per_request: State.costPerRequest,  // v2.8: 单次成本
         }),
       });
       const data = await resp.json();
@@ -1796,6 +1909,7 @@ async function startEvaluation() {
     initHistory();
     initModelActions();
     initModes();
+    initPayPerCall();  // v2.8: 按次收费中转站支持
     initStart();
     initEvalDimensions();
     initEvalDifficulty();

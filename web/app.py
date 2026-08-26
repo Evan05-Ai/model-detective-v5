@@ -339,10 +339,17 @@ def api_detect():
     models = data.get("models") or []
     mode = (data.get("mode") or "standard").strip().lower()
     protocol = (data.get("protocol") or "auto").strip().lower()
+    # v2.8: 按次收费中转站支持
+    pay_per_call = data.get("pay_per_call", False)
+    cost_per_request = data.get("cost_per_request", 0.5)
 
     # validation
     if not base_url.startswith(("http://", "https://")):
         return jsonify({"ok": False, "error": "base_url must start with http(s)://"}), 400
+    # v2.8: SSRF 防护
+    is_valid, err = _validate_base_url_no_ssrf(base_url)
+    if not is_valid:
+        return jsonify({"ok": False, "error": err}), 400
     if not api_key or len(api_key) < 8:
         return jsonify({"ok": False, "error": "api_key looks invalid"}), 400
     if not models or not isinstance(models, list):
@@ -373,7 +380,9 @@ def api_detect():
         _JOBS[job_id] = job
 
     # start background execution (semaphore limits concurrency)
-    t = threading.Thread(target=_run_detection, args=(job_id, base_url, api_key, models, mode, protocol), daemon=True)
+    # v2.8: 按次收费模式传递 pay_per_call 和 cost_per_request
+    t = threading.Thread(target=_run_detection, args=(job_id, base_url, api_key, models, mode, protocol), 
+                         kwargs={"pay_per_call": pay_per_call, "cost_per_request": cost_per_request}, daemon=True)
     t.start()
 
     return jsonify({"ok": True, "job_id": job_id})
@@ -459,7 +468,8 @@ def api_report(job_id: str):
 
 # ── Background detection runner ──────────────────────────────
 
-def _run_detection(job_id: str, base_url: str, api_key: str, models: list[str], mode: str, protocol: str):
+def _run_detection(job_id: str, base_url: str, api_key: str, models: list[str], mode: str, protocol: str,
+                   pay_per_call: bool = False, cost_per_request: float = 0.5):
     """Run detection for each model sequentially (semaphore-gated)."""
     _JOB_SEMA.acquire()
     try:
@@ -480,7 +490,9 @@ def _run_detection(job_id: str, base_url: str, api_key: str, models: list[str], 
             })
 
             try:
-                report_dict = _execute_single_detection(base_url, api_key, model_name, mode, protocol)
+                # v2.8: 按次收费模式传递参数
+                report_dict = _execute_single_detection(base_url, api_key, model_name, mode, protocol,
+                                                        pay_per_call=pay_per_call, cost_per_request=cost_per_request)
                 _push_progress(job_id, {
                     "type": "model_done",
                     "model": model_name,
@@ -520,8 +532,14 @@ def _push_progress(job_id: str, event: dict):
         if j:
             j.progress.append(event)
 
-def _execute_single_detection(base_url: str, api_key: str, model: str, mode: str, protocol: str) -> dict:
-    """Execute a single model detection and return a serializable report dict."""
+def _execute_single_detection(base_url: str, api_key: str, model: str, mode: str, protocol: str,
+                              pay_per_call: bool = False, cost_per_request: float = 0.5) -> dict:
+    """Execute a single model detection and return a serializable report dict.
+    
+    v2.8: 按次收费中转站支持
+    - pay_per_call: 是否按次收费模式
+    - cost_per_request: 单次请求成本
+    """
     from src.core.models import Protocol, RunMode
     from src.core.protocol_resolver import ProtocolResolver
     from src.core.runner import Runner
@@ -547,15 +565,28 @@ def _execute_single_detection(base_url: str, api_key: str, model: str, mode: str
     # create client + detectors
     if resolved_protocol == Protocol.OPENAI:
         client = OpenAIClient(effective_base_url, api_key, model)
-        active_dets = openai_active()
+        # v2.8: 按次收费模式只运行核心检测器
+        if pay_per_call:
+            # 按次收费：只运行 basic_request 和 model_consistency
+            active_dets = [d for d in openai_active() if d.name in ("basic_request", "model_consistency")]
+        else:
+            active_dets = openai_active()
         passive_dets = openai_passive()
     elif resolved_protocol == Protocol.ANTHROPIC:
         client = AnthropicClient(effective_base_url, api_key, model)
-        active_dets = anthropic_active()
+        # v2.8: 按次收费模式只运行核心检测器
+        if pay_per_call:
+            active_dets = [d for d in anthropic_active() if d.name in ("basic_request", "model_consistency")]
+        else:
+            active_dets = anthropic_active()
         passive_dets = anthropic_passive()
     elif resolved_protocol == Protocol.GEMINI:
         client = GeminiClient(effective_base_url, api_key, model)
-        active_dets = gemini_active()
+        # v2.8: 按次收费模式只运行核心检测器
+        if pay_per_call:
+            active_dets = [d for d in gemini_active() if d.name in ("basic_request", "model_consistency")]
+        else:
+            active_dets = gemini_active()
         passive_dets = gemini_passive()
     else:
         raise ValueError(f"Unsupported protocol: {resolved_protocol}")
@@ -573,6 +604,10 @@ def _execute_single_detection(base_url: str, api_key: str, model: str, mode: str
     )
 
     report = runner.run()
+
+    # v2.8: 添加按次收费成本信息
+    if pay_per_call:
+        report.estimated_cost_usd = cost_per_request * report.total_requests
 
     # serialize report
     return _serialize_report(report, resolved_protocol, degraded, degrade_reason, effective_base_url)
