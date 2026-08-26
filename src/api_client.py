@@ -45,8 +45,11 @@ class APIClient:
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         })
+        # 浏览器 UA：绕过 Cloudflare WAF 对非浏览器 UA 的 403 拦截
+        from src.core.http_utils import BROWSER_HEADERS
+        self.session.headers.update(BROWSER_HEADERS)
         self.total_tokens_used = 0
         self.total_requests = 0
 

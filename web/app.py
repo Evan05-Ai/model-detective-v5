@@ -181,14 +181,17 @@ def api_probe():
         return jsonify({"ok": False, "error": "api_key looks invalid"}), 200
 
     urls = _model_probe_urls(base_url)
+    from src.core.http_utils import BROWSER_HEADERS
     headers_bearer = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
+        **BROWSER_HEADERS,
     }
     headers_anthropic = {
         "x-api-key": api_key,
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
+        **BROWSER_HEADERS,
     }
 
     # Single-pass scan: try each URL with both auth strategies

@@ -66,6 +66,9 @@ class BaseProtocolClient:
         if session is None:
             session = requests.Session()
             session.headers.update(self._session_headers)
+            # 浏览器 UA：绕过 Cloudflare WAF 对非浏览器 UA 的 403 拦截
+            from src.core.http_utils import BROWSER_HEADERS
+            session.headers.update(BROWSER_HEADERS)
             self._local.session = session
         return session
 

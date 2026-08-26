@@ -15,6 +15,7 @@ Bug 3 修复：
 
 import json
 from .models import Protocol
+from .http_utils import BROWSER_HEADERS
 
 
 # 模型名 → 原生协议映射
@@ -98,6 +99,7 @@ class ProtocolResolver:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
+            **BROWSER_HEADERS,
         }
 
         # 尝试多种 URL 模式 - 扩大探测范围
@@ -172,6 +174,7 @@ class ProtocolResolver:
             "x-api-key": self.api_key,
             "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
+            **BROWSER_HEADERS,
         }
         payload = {
             "model": self.model,
@@ -249,7 +252,7 @@ class ProtocolResolver:
 
         for url in url_candidates:
             try:
-                resp = requests.post(url, json=payload, timeout=15)
+                resp = requests.post(url, json=payload, headers=BROWSER_HEADERS, timeout=15)
 
                 if resp.status_code == 200:
                     # v2.4: 验证响应是否为 JSON
