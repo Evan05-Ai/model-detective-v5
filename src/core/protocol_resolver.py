@@ -203,8 +203,9 @@ class ProtocolResolver:
                         data = resp.json()
                         if isinstance(data, dict) and ("content" in data or "id" in data or "type" in data):
                             # 探活成功，修正 base_url
-                            if url.endswith("/v1/messages"):
-                                self.base_url = self.base_url + "/v1"
+                            # 只有当 base_url 不以 /v1 结尾时才追加（避免 /v1/v1 重复）
+                            if url.endswith("/v1/messages") and not self.base_url.rstrip("/").endswith("/v1"):
+                                self.base_url = self.base_url.rstrip("/") + "/v1"
                             return True, ""
                         else:
                             # 200 但不是 Anthropic API 响应格式

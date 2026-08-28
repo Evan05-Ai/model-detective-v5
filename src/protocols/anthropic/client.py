@@ -61,10 +61,12 @@ class AnthropicClient(BaseProtocolClient):
         
         # 构建候选 URL 列表 - 扩大尝试范围
         if base.endswith("/v1"):
+            # 去掉末尾的 /v1，避免重复拼接
+            clean_base = base[:-3] if base.endswith("/v1") else base
             url_candidates = [
                 f"{base}/messages",
-                f"{base.rstrip('/v1')}/v1/messages",
-                f"{base.rstrip('/v1')}/messages",
+                f"{clean_base}/v1/messages",
+                f"{clean_base}/messages",
             ]
         else:
             url_candidates = [
