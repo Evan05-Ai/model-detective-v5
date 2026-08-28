@@ -344,7 +344,7 @@ def api_detect():
     protocol = (data.get("protocol") or "auto").strip().lower()
     # v2.8: 按次收费中转站支持
     pay_per_call = data.get("pay_per_call", False)
-    cost_per_request = data.get("cost_per_request", 0.5)
+    cost_per_request = data.get("cost_per_request", 0)  # 默认为0，前端必须提供实际值
 
     # validation
     if not base_url.startswith(("http://", "https://")):
@@ -472,7 +472,7 @@ def api_report(job_id: str):
 # ── Background detection runner ──────────────────────────────
 
 def _run_detection(job_id: str, base_url: str, api_key: str, models: list[str], mode: str, protocol: str,
-                   pay_per_call: bool = False, cost_per_request: float = 0.5):
+                   pay_per_call: bool = False, cost_per_request: float = 0):
     """Run detection for each model sequentially (semaphore-gated)."""
     _JOB_SEMA.acquire()
     try:
@@ -536,7 +536,7 @@ def _push_progress(job_id: str, event: dict):
             j.progress.append(event)
 
 def _execute_single_detection(base_url: str, api_key: str, model: str, mode: str, protocol: str,
-                              pay_per_call: bool = False, cost_per_request: float = 0.5) -> dict:
+                              pay_per_call: bool = False, cost_per_request: float = 0) -> dict:
     """Execute a single model detection and return a serializable report dict.
     
     v2.8: 按次收费中转站支持

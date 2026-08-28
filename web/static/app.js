@@ -19,7 +19,7 @@
     currentRelayUrl: '',
     // v2.8: 按次收费中转站支持
     payPerCall: false,              // 是否按次收费模式
-    costPerRequest: 0.5,            // 单次请求成本（美元）
+    costPerRequest: 0,              // 单次请求成本（美元），默认为0，用户必须输入实际成本
     // v2.8: SSE 流管理
     currentEventSource: null,      // 当前活动的 EventSource
     currentIntervalId: null,       // 当前活动的 fallback interval
@@ -783,16 +783,16 @@ return;
       }
     });
     
-    // 更新成本预估
-    function updateCostEstimate() {
-      const cost = parseFloat(costInput?.value) || 0.5;
-      const requestCount = State.mode === 'quick' ? 3 : 4;
-      const total = cost * requestCount;
-      if (costEstimate) {
-        costEstimate.textContent = `$${total.toFixed(2)}（${requestCount}次请求）`;
+      // 更新成本预估
+      function updateCostEstimate() {
+        const cost = parseFloat(costInput?.value) || 0;
+        const requestCount = State.mode === 'quick' ? 3 : 4;
+        const total = cost * requestCount;
+        if (costEstimate) {
+          costEstimate.textContent = `$${total.toFixed(2)}（${requestCount}次请求）`;
+        }
+        State.costPerRequest = cost;
       }
-      State.costPerRequest = cost;
-    }
     
     if (costInput) {
       costInput.addEventListener('input', updateCostEstimate);
@@ -809,7 +809,12 @@ return;
           return;
         }
         
-        const cost = parseFloat(costInput?.value) || 0.5;
+        const cost = parseFloat(costInput?.value) || 0;
+        if (cost <= 0) {
+          alert('请输入单次请求成本（美元）');
+          costInput?.focus();
+          return;
+        }
         if (!confirm(`获取模型列表将花费 $${cost.toFixed(2)}，是否继续？`)) {
           return;
         }
@@ -855,7 +860,13 @@ return;
 
     // v2.8: 按次收费模式成本确认
     if (State.payPerCall) {
-      const cost = State.costPerRequest || 0.5;
+      const cost = State.costPerRequest || 0;
+      if (cost <= 0) {
+        alert('⚠️ 请先填写单次请求成本\n\n按次收费中转站需要您输入实际单次成本，以便准确估算检测费用。');
+        const costInput = $('cost-per-request');
+        if (costInput) costInput.focus();
+        return;
+      }
       const requestCount = State.mode === 'quick' ? 3 : 4;
       const totalCost = cost * requestCount;
       
