@@ -60,11 +60,12 @@ class OpenAIClient(BaseProtocolClient):
         url_candidates = []
         
         if base.endswith("/v1"):
-            # 如果 base 以 /v1 结尾，尝试带和不带 /v1 的路径
+            # 去掉末尾的 /v1，避免 rstrip 陷阱
+            clean_base = base[:-3] if base.endswith("/v1") else base
             url_candidates = [
                 f"{base}/chat/completions",
-                f"{base.rstrip('/v1')}/v1/chat/completions",  # 避免重复 /v1
-                f"{base.rstrip('/v1')}/chat/completions",
+                f"{clean_base}/v1/chat/completions",
+                f"{clean_base}/chat/completions",
             ]
         else:
             # 如果 base 不以 /v1 结尾，尝试多种组合
