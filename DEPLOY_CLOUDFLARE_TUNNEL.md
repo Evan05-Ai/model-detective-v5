@@ -117,10 +117,12 @@ cloudflared tunnel --url http://localhost:5000
 .\install_service.ps1 -Uninstall
 
 # 或用 Windows 自带命令
-sc start ModelDetectiveFlask
-sc stop ModelDetectiveFlask
-sc start ModelDetectiveTunnel
-sc stop ModelDetectiveTunnel
+# 注意: 必须写成 sc.exe（带后缀），否则 PowerShell 会把 sc 解析为 Set-Content 别名，
+#       误创建名为 start/stop 的垃圾文件
+sc.exe start ModelDetectiveFlask
+sc.exe stop ModelDetectiveFlask
+sc.exe start ModelDetectiveTunnel
+sc.exe stop ModelDetectiveTunnel
 ```
 
 ### 查看当前隧道 URL
