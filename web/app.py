@@ -137,16 +137,34 @@ _FORBIDDEN_URL_PATTERNS = [
     "https://[::1]",
 ]
 
+# 内网 IP 范围（CIDR 表示法），用于 DNS 解析后的 IP 检查
+import ipaddress as _ipaddress
+_INTERNAL_NETWORKS = [
+    _ipaddress.ip_network("127.0.0.0/8"),        # loopback
+    _ipaddress.ip_network("10.0.0.0/8"),         # private
+    _ipaddress.ip_network("172.16.0.0/12"),      # private
+    _ipaddress.ip_network("192.168.0.0/16"),     # private
+    _ipaddress.ip_network("169.254.0.0/16"),     # link-local
+    _ipaddress.ip_network("0.0.0.0/8"),          # reserved
+    _ipaddress.ip_network("::1/128"),            # IPv6 loopback
+    _ipaddress.ip_network("fc00::/7"),           # IPv6 unique local
+    _ipaddress.ip_network("fe80::/10"),          # IPv6 link-local
+]
+
 
 def _validate_base_url_no_ssrf(base_url: str) -> tuple[bool, str]:
     """验证 base_url 不会导致 SSRF 攻击
+    
+    两层防护：
+    1. 字符串前缀匹配 — 快速拦截明显的内网地址
+    2. DNS 解析检查 — 防止域名解析到内网 IP 的绕过攻击
     
     Returns:
         (is_valid, error_message)
     """
     url_lower = base_url.lower()
     
-    # 检查是否包含禁止的内网地址
+    # 第一层：字符串前缀匹配
     for forbidden in _FORBIDDEN_URL_PATTERNS:
         if url_lower.startswith(forbidden):
             return False, f"禁止访问内网地址: {base_url}"
@@ -154,6 +172,29 @@ def _validate_base_url_no_ssrf(base_url: str) -> tuple[bool, str]:
     # 检查是否包含 localhost
     if "localhost" in url_lower:
         return False, "禁止访问 localhost"
+    
+    # 第二层：DNS 解析检查 — 防止域名解析到内网 IP
+    try:
+        from urllib.parse import urlparse
+        import socket
+        parsed = urlparse(base_url)
+        hostname = parsed.hostname
+        if hostname:
+            # 获取所有解析到的 IP 地址
+            addrinfos = socket.getaddrinfo(hostname, None)
+            for addrinfo in addrinfos:
+                ip_str = addrinfo[4][0]
+                try:
+                    ip = _ipaddress.ip_address(ip_str)
+                    for network in _INTERNAL_NETWORKS:
+                        if ip in network:
+                            return False, f"域名 {hostname} 解析到内网地址 {ip_str}，禁止访问"
+                except ValueError:
+                    continue
+    except (socket.gaierror, Exception):
+        # DNS 解析失败时不阻止请求（可能是临时 DNS 问题）
+        # 让后续的 HTTP 请求自然失败即可
+        pass
     
     return True, ""
 
@@ -774,6 +815,23 @@ from src.evaluation.reporter import result_to_dict as _eval_result_to_dict
 
 _EVAL_JOBS: dict[str, dict] = {}
 _EVAL_LOCK = threading.Lock()
+_MAX_EVAL_JOBS = 200  # prevent unbounded memory growth
+
+
+def _gc_eval_jobs():
+    """Remove old completed/errored eval jobs to prevent unbounded memory growth."""
+    if len(_EVAL_JOBS) <= _MAX_EVAL_JOBS:
+        return
+    candidates = []
+    for jid, j in _EVAL_JOBS.items():
+        ts = j.get("finished_at") or j.get("created_at", 0)
+        candidates.append((ts, jid, j.get("status", "")))
+    candidates.sort()
+    for _, jid, status in candidates:
+        if status in ("done", "error"):
+            del _EVAL_JOBS[jid]
+            if len(_EVAL_JOBS) <= _MAX_EVAL_JOBS:
+                break
 
 
 @app.post("/api/evaluate")
@@ -836,6 +894,7 @@ def api_evaluate():
     engine = EvaluationEngine(base_url, api_key)
 
     with _EVAL_LOCK:
+        _gc_eval_jobs()
         _EVAL_JOBS[job_id] = {
             "engine": engine,
             "models": models,

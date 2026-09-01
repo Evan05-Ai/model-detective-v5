@@ -1,23 +1,30 @@
 """
-Anthropic 协议检测器配置（v2.2）
+Anthropic 协议检测器配置（v2.6）
 
-14 项检测器权重表：
+14 项检测器权重表（v2.6 调整后）：
   thinking_signature    0.25  AUTHENTICITY  (加密级，核心)
-  identity              0.10  AUTHENTICITY
+  identity              0.12  AUTHENTICITY  (v2.6: 0.10 -> 0.12)
   consistency           0.10  AUTHENTICITY
-  behavioral_signature  0.08  AUTHENTICITY
-  knowledge             0.07  AUTHENTICITY
+  behavioral_signature  0.04  AUTHENTICITY  (v2.6: 0.08 -> 0.04，降低过拟合风险)
+  knowledge             0.06  AUTHENTICITY  (v2.6: 0.07 -> 0.06)
   protocol              0.06  COMPLIANCE
-  integrity             0.06  COMPLIANCE
-  billing_integrity     0.05  COMPLIANCE  (v2.2 新增，计费审计)
+  integrity             0.08  COMPLIANCE    (v2.6: 0.06 -> 0.08，被动观察更客观)
+  billing_integrity     0.05  COMPLIANCE    (v2.2 新增，计费审计)
   function_calling      0.06  CAPABILITY
   message_id            0.03  COMPLIANCE
   token_usage           0.02  COMPLIANCE
   structured_output     0.05  CAPABILITY
   pdf                   0.05  CAPABILITY
-  long_context          0.02  CAPABILITY  (仅 full 模式)
+  long_context          0.03  CAPABILITY    (v2.6: 0.02 -> 0.03，仅 full 模式)
   ────────────────────────────────────
-                        1.00  合计
+                         1.00  合计
+
+v2.6 变更：
+  - identity 0.10 -> 0.12（身份认知更重要）
+  - behavioral_signature 0.08 -> 0.04（降低过拟合风险高的检测器权重）
+  - knowledge 0.07 -> 0.06
+  - integrity 0.06 -> 0.08（被动观察更客观）
+  - long_context 0.02 -> 0.03（长上下文能力重要性提升）
 
 v2.2 变更：
   - 新增 billing_integrity 0.05（计费完整性检测）

@@ -77,16 +77,18 @@ class AnthropicClient(BaseProtocolClient):
 
         for url in url_candidates:
             try:
-                print(f"[DEBUG] _try_resolve_url: trying {url}")
                 resp = req.post(url, json=payload, headers=headers, timeout=15)
-                print(f"[DEBUG] _try_resolve_url: {url} -> status={resp.status_code}")
                 if resp.status_code == 200:
                     try:
                         data = resp.json()
                         if isinstance(data, dict):
-                            # 有效 JSON 响应，缓存这个 URL
-                            self._resolved_messages_url = url
-                            return data
+                            # 验证是否为 Anthropic Messages API 响应
+                            # 必须包含 content 或 error 字段，且 role 为 assistant（或存在 id）
+                            if ("content" in data or "error" in data) and (
+                                data.get("role") == "assistant" or "id" in data
+                            ):
+                                self._resolved_messages_url = url
+                                return data
                     except (json.JSONDecodeError, ValueError):
                         continue
             except Exception:
@@ -126,9 +128,7 @@ class AnthropicClient(BaseProtocolClient):
             payload["thinking"] = thinking
 
         url = self._get_messages_url()
-        
-        # DEBUG: 打印请求信息
-        print(f"[DEBUG] AnthropicClient.messages: base_url={self.base_url}, url={url}, model={self.model}")
+
 
         try:
             resp = request_with_retry(
@@ -137,9 +137,7 @@ class AnthropicClient(BaseProtocolClient):
                 json=payload,
                 detector_name=detector_name,
             )
-            
-            # DEBUG: 打印响应状态
-            print(f"[DEBUG] AnthropicClient.messages: status={resp.status_code}, headers={dict(resp.headers)}")
+
 
             if resp.status_code == 200:
                 # v2.4: 安全地解析 JSON，处理非 JSON 200 响应
@@ -201,9 +199,7 @@ class AnthropicClient(BaseProtocolClient):
                 )
             elif resp.status_code in (403, 404) and not self._resolved_messages_url:
                 # v2.5: 403/404 错误时尝试其他 URL 路径
-                print(f"[DEBUG] AnthropicClient.messages: {resp.status_code} error, trying alternative URLs...")
                 resolved_data = self._try_resolve_url(payload, detector_name)
-                print(f"[DEBUG] AnthropicClient.messages: _try_resolve_url returned {resolved_data is not None}")
                 if resolved_data is not None:
                     data = resolved_data
                     usage_data = data.get("usage", {})

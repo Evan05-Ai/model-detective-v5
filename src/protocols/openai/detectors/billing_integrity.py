@@ -145,26 +145,27 @@ class BillingIntegrityDetector(ActiveDetector):
                 detector_name=self.name,
             ))
 
-        # ── 2. Cache 字段审计 ────────────────────────────────
-        cache_read = getattr(usage, 'cache_read_tokens', 0) or 0
-        cache_creation = getattr(usage, 'cache_creation_tokens', 0) or 0
-        has_cache = cache_read > 0 or cache_creation > 0
+        # ── 2. Cache 字段审计（OpenAI 格式） ─────────────────
+        # OpenAI API 的缓存信息在 usage.prompt_tokens_details.cached_tokens 中
+        # 注意：cache_read_tokens / cache_creation_tokens 是 Anthropic 的字段名，不适用于 OpenAI
+        raw_usage = (resp.raw_response or {}).get("usage", {})
+        prompt_tokens_details = raw_usage.get("prompt_tokens_details", {}) or {}
+        cached_tokens = prompt_tokens_details.get("cached_tokens", 0) or 0
 
-        if has_cache:
-            details_parts.append(f"cache_read={cache_read}")
-            details_parts.append(f"cache_creation={cache_creation}")
-            # 非缓存请求返回 cache 字段是明确的异常
+        if cached_tokens > 0:
+            details_parts.append(f"cached_tokens={cached_tokens}")
+            # 非缓存请求返回 cached_tokens 是明确的异常
             score -= 20
             issues.append(Issue(
                 level=IssueLevel.MAJOR,
-                message=f"非缓存请求返回 cache 字段（read={cache_read}, creation={cache_creation}）",
+                message=f"非缓存请求却返回 cached_tokens={cached_tokens}，可能虚报缓存计费",
                 detector_name=self.name,
             ))
         else:
-            details_parts.append("cache=无")
+            details_parts.append("cached=无")
             issues.append(Issue(
                 level=IssueLevel.OK,
-                message="cache 字段正常",
+                message="cache 字段正常（无异常 cached_tokens）",
                 detector_name=self.name,
             ))
 
