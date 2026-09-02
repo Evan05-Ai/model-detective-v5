@@ -1,4 +1,4 @@
-# Model Detective - Cloudflare Tunnel 部署指南
+# Model Detective - Cloudflare Tunnel 部署与运维指南
 
 > 🎯 **目标**：零成本、零绑卡、零服务器，将本地 Flask 应用暴露到公网
 >
@@ -6,129 +6,71 @@
 
 ---
 
-## 📋 前置条件
+## 📋 当前生产架构（2026-08-10 落地）
 
-| 条件 | 状态 |
+| 组件 | 说明 |
 |------|------|
-| Windows 11 电脑 | ✅ 已确认 |
-| Python 虚拟环境 | ✅ `.venv\Scripts\python.exe` 已存在 |
-| cloudflared | ✅ 已安装 (v2026.7.3) |
-| Cloudflare 账号 | 仅命名隧道模式需要 |
+| Flask 服务 | Windows 服务 `ModelDetectiveFlask`（nssm 管理），`.venv\Scripts\python.exe run_web.py`，端口 5000 |
+| 隧道 | Cloudflare **命名隧道** `model-detective`，固定 URL https://detect.model-detective.online |
+| 隧道配置 | `.cloudflared/config.yml`（ingress: detect.model-detective.online → localhost:5000）+ 凭证 json |
+| 公网访问 | https://detect.model-detective.online |
+
+> ⚠️ `.cloudflared/` 目录含隧道凭证，已被 `.gitignore` 排除，**绝不能提交入库**（历史上曾误提交，凭证需在 Cloudflare 后台轮换）。
 
 ---
 
-## 🚀 快速开始（3 步上线）
+## 🚀 日常运维
 
-### 方法一：双击启动（最简单）
+### 重启服务（最常用）
 
-1. 双击运行 `start_tunnel.bat`
-2. 等待几秒钟，看到类似输出：
-   ```
-   Your quick Tunnel has been created! Visit it at:
-     https://random-words-1234.trycloudflare.com
-   ```
-3. **任何人打开这个 URL 就能访问你的 Model Detective！**
+右键 `restart_service.bat` → **以管理员身份运行**。脚本会 `net stop/start ModelDetectiveFlask` 并验证 5000 端口。
 
-### 方法二：PowerShell 启动
+- nssm 配置了 `AppExit=Restart`：进程意外退出会自动重启，无需人工干预
+- **不要**用 taskkill 强杀服务进程——nssm 会立刻把它拉起来
+
+### 查看服务状态
 
 ```powershell
-cd "d:\Ai工作\model-detective"
-.\start_tunnel.ps1
+# 必须写成 sc.exe（带后缀），否则 PowerShell 会把 sc 解析为 Set-Content 别名，
+# 误创建名为 start/stop 的垃圾文件
+sc.exe query ModelDetectiveFlask
+netstat -ano | findstr ":5000"
+
+# 测试 API
+curl http://localhost:5000/api/providers
+curl http://localhost:5000/health
 ```
 
-### 停止服务
+### 手动启动隧道（平时不需要，隧道由 cloudflared 服务/进程托管）
 
-- 双击 `stop_tunnel.bat`
-- 或直接关闭 `start_tunnel` 窗口
-- 或按 `Ctrl+C`
+双击 `start_named_tunnel.bat`（使用 `.cloudflared/` 中的隧道 UUID 与配置）。
 
 ---
 
-## 🔧 两种隧道模式详解
+## 🛠 首次安装（仅新机器需要）
 
-### 模式 A：快速隧道（默认，推荐先用这个）
+### 1. 安装 Flask 服务
 
-```
-cloudflared tunnel --url http://localhost:5000
-```
+右键 `install_flask_service.bat` → **以管理员身份运行**（内含 winget 安装 nssm 的步骤）。
 
-| 特性 | 说明 |
-|------|------|
-| URL | `https://随机词.trycloudflare.com` |
-| 需要域名 | ❌ 不需要 |
-| 需要账号 | ❌ 不需要 |
-| URL 稳定性 | ⚠️ 每次重启 cloudflared 会变 |
-| 适合场景 | 临时演示、测试、分享 |
-
-### 模式 B：命名隧道（长期使用）
+### 2. 准备 Cloudflare 命名隧道
 
 ```powershell
-.\start_tunnel.ps1 -Named -Hostname "detect.yourdomain.com"
+# 登录并生成证书（浏览器授权）
+cloudflared tunnel login
+
+# 创建命名隧道（生成凭证 json 到 %USERPROFILE%\.cloudflared\）
+cloudflared tunnel create model-detective
+
+# 记下输出的 Tunnel UUID，写入 .cloudflared\config.yml 与 start_named_tunnel.bat
+# 在 Cloudflare 仪表盘将域名 CNAME 指向 <UUID>.cfargotunnel.com
 ```
 
-| 特性 | 说明 |
-|------|------|
-| URL | `https://detect.yourdomain.com`（固定不变） |
-| 需要域名 | ✅ 需要一个在 Cloudflare 托管的域名 |
-| 需要账号 | ✅ 需要 Cloudflare 免费账号 |
-| URL 稳定性 | ✅ 永远不变 |
-| 适合场景 | 长期使用、正式部署、分享给他人 |
-
-**设置命名隧道步骤**：
-
-1. 注册 Cloudflare 免费账号：https://dash.cloudflare.com/sign-up
-2. 添加你的域名到 Cloudflare（修改域名 NS 记录）
-3. 运行：
-   ```powershell
-   .\start_tunnel.ps1 -Named -Hostname "detect.yourdomain.com"
-   ```
-4. 浏览器会弹出授权页面，选择域名并授权
-5. 完成！URL 固定为 `https://detect.yourdomain.com`
-
----
-
-## 🔄 开机自启（Windows 服务）
-
-### 安装服务（需管理员权限）
-
-1. 先安装 NSSM：
-   ```powershell
-   winget install nssm.nssm
-   ```
-
-2. 以管理员身份打开 PowerShell，运行：
-   ```powershell
-   cd "d:\Ai工作\model-detective"
-   .\install_service.ps1 -Install
-   ```
-
-3. 安装后效果：
-   - 开机自动启动 Flask + Cloudflare Tunnel
-   - 无需手动开窗口
-   - 日志写入 `logs/` 目录
-
-### 管理服务
+### 3. 验证
 
 ```powershell
-# 查看状态（管理员）
-.\install_service.ps1 -Status
-
-# 卸载服务（管理员）
-.\install_service.ps1 -Uninstall
-
-# 或用 Windows 自带命令
-# 注意: 必须写成 sc.exe（带后缀），否则 PowerShell 会把 sc 解析为 Set-Content 别名，
-#       误创建名为 start/stop 的垃圾文件
-sc.exe start ModelDetectiveFlask
-sc.exe stop ModelDetectiveFlask
-sc.exe start ModelDetectiveTunnel
-sc.exe stop ModelDetectiveTunnel
-```
-
-### 查看当前隧道 URL
-
-```powershell
-type "d:\Ai工作\model-detective\logs\tunnel_stdout.log"
+cloudflared tunnel run model-detective
+# 浏览器访问 https://detect.model-detective.online
 ```
 
 ---
@@ -141,8 +83,6 @@ type "d:\Ai工作\model-detective\logs\tunnel_stdout.log"
 | Standard 检测 | ✅ 完美 | ~40s，无限制 |
 | Full 检测 | ✅ 完美 | ~70s，无限制 |
 | SSE 实时推送 | ✅ 支持 | Cloudflare 代理支持 SSE |
-| 后台线程 | ✅ 支持 | 本地完整 Python 环境 |
-| tiktoken | ✅ 支持 | 本地已安装 |
 | HTTPS | ✅ 自动 | Cloudflare 自动管理证书 |
 | DDoS 防护 | ✅ 免费 | Cloudflare 边缘防护 |
 | 中国访问速度 | ✅ 快 | Cloudflare 有亚洲节点 |
@@ -162,21 +102,16 @@ type "d:\Ai工作\model-detective\logs\tunnel_stdout.log"
 
 ### 2. SSE 超时
 Cloudflare 代理默认有 ~100 秒超时。Full 检测通常在 70s 内完成，一般没问题。如果偶尔超时：
-- 用命名隧道 + 在 Cloudflare 仪表盘调整 `Proxy Read Timeout`
+- 在 Cloudflare 仪表盘调整 `Proxy Read Timeout`
 - 或将检测拆分为更小的步骤
 
-### 3. 快速隧道 URL 变化
-快速隧道的 URL 在 cloudflared 重启后会变化。如果需要固定 URL：
-- 使用命名隧道模式（需要域名）
-- 或用 Windows 服务模式（URL 仍会变，但服务会自动重启）
-
-### 4. 带宽消耗
+### 3. 带宽消耗
 Model Detective 是轻量应用，主要消耗：
 - 用户访问页面：~100KB/次
 - 检测请求通过隧道出站：~几 KB/次
 - 一般家庭宽带完全够用
 
-### 5. 安全性
+### 4. 安全性
 - 隧道是**出站**连接，不需要在路由器/防火墙开放任何入站端口
 - 比端口映射/DDNS 安全得多
 - Cloudflare 自带 DDoS 防护
@@ -192,16 +127,10 @@ Model Detective 是轻量应用，主要消耗：
 set PATH=%PATH%;C:\Program Files (x86)\cloudflared
 ```
 
-### 问题：端口 5000 被占用
-```
-解决：运行 stop_tunnel.bat 先停止旧进程
-或修改 run_web.py 中的默认端口
-```
-
 ### 问题：隧道连上了但访问报 502
 ```
 原因：Flask 未启动或崩溃
-解决：检查 Flask 是否正常运行
+解决：右键 restart_service.bat（管理员）重启 Flask 服务
 curl http://localhost:5000/health
 ```
 
@@ -214,15 +143,15 @@ Full 检测如果偶尔超时，重试即可
 
 ---
 
-## 📁 文件清单
+## 📁 相关文件清单
 
 | 文件 | 说明 |
 |------|------|
-| `start_tunnel.bat` | 一键启动（双击运行，最简单） |
-| `start_tunnel.ps1` | PowerShell 启动脚本（功能更全） |
-| `stop_tunnel.bat` | 一键停止所有进程 |
-| `install_service.ps1` | Windows 服务安装/卸载/状态 |
-| `logs/` | 服务运行日志目录（自动创建） |
+| `restart_service.bat` | 重启 Flask 服务（nssm，需管理员） |
+| `install_flask_service.bat` | Flask 服务安装（nssm，需管理员） |
+| `start_named_tunnel.bat` | 命名隧道手动启动 |
+| `.cloudflared/config.yml` | 隧道 ingress 配置（已 gitignore） |
+| `.cloudflared/model-detective.json` | 隧道凭证（已 gitignore） |
 
 ---
 
@@ -231,7 +160,6 @@ Full 检测如果偶尔超时，重试即可
 | 维度 | 评价 |
 |------|------|
 | 费用 | **完全免费** |
-| 部署时间 | **3 分钟** |
+| URL | **固定不变**（命名隧道） |
 | Full 检测 | **无限制** |
 | 维护成本 | 电脑开机即可 |
-| 适合场景 | 等 ECS 到位前的完美过渡方案 |

@@ -120,3 +120,5 @@ bin/
 .codeartsdoer/
 .codegraph/
 .zcode/
+# Cloudflare Tunnel 本地配置与隧道凭证（绝不能入库，凭证已在历史中泄露需轮换）
+.cloudflared/

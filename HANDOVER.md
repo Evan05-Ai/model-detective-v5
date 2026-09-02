@@ -54,6 +54,14 @@ gorouter.app 检测**成功**：
 | 重启方式 | 右键 restart_service.bat → 以管理员身份运行 |
 | 公网访问 | https://detect.model-detective.online |
 
+### 1.5 2026-09-03 工作区大清理
+
+- 移除误入仓库的根目录第三方包 459 个文件（阿里云 FC `pip install -t .` 残留），依赖改由 .venv 提供（已补装 tiktoken/gunicorn/regex，flask/requests 等版本不变）
+- 清理约 55 个历史残留文件（检测输出、一次性脚本、过时设计稿、AI 工具目录、缓存）
+- 阿里云 FC 部署文件移除；启动脚本 8 个整合为 3 个
+- `.cloudflared/` 凭证解除 git 跟踪；scripts/ 中含硬编码 Key 的一次性测试脚本已删除
+- 详见 MEMORY.md "2026-09-03 工作区大清理" 章节
+
 ---
 
 ## 二、本次修复的技术详情（2026-09-01 自检审查）
@@ -161,6 +169,15 @@ D:\Ai工作\model-detective\
 
 ## 四、历史修复记录（按时间倒序）
 
+### 2026-09-03 工作区大清理
+- **根目录第三方包移除**（459 个 git 跟踪文件）：2026-08-10 已放弃的阿里云 FC 部署执行 `pip install -r requirements.txt -t .` 产生，且当时用 Python 3.14 安装——cp314 二进制在 3.12 venv 下无法加载，还遮蔽 venv 同名包。依赖改由 .venv 提供
+- **约 55 个零引用残留文件删除**：检测/测评输出 txt×33 + json×10、一次性自检脚本（_test_identity/_v1_verify/_v2_selfcheck）、空壳脚本（update_consistency.py 0B / update_handover.py 36B）、无关的股票 demo index.html、过时设计稿（FUSION_PLAN/STARTUP_GUIDE/test_framework/test_questions(+v2)/core_summary/execution_guide/scoring_sheet/visualization_template/STARTUP_PROMPT，真实题库在 eval_engine.py 内置常量）
+- **scripts/ 清理**：删除 8 个 2026-07 一次性中转站测试脚本（含硬编码 API Key）；保留 generate_test_pdf.py、billing_audit.py
+- **阿里云 FC 五件套删除**：s.yaml、aliyun_fc_app.py、deploy_fc.sh/ps1、bootstrap
+- **启动脚本整合 8→3**：保留 restart_service.bat、install_flask_service.bat、start_named_tunnel.bat；删除 stop_tunnel.bat（与 nssm 自动重启冲突）、start_web.bat（系统 Python 损坏）、start_tunnel.bat/ps1（快速隧道旧方案）、install_service.ps1（与 bat 重叠）
+- **安全加固**：.cloudflared/ 凭证解除 git 跟踪并 ignore（文件保留在磁盘）；README 项目树校正；DEPLOY_CLOUDFLARE_TUNNEL.md 重写为 nssm + 命名隧道现状
+- **AI 工具目录**：.codebuddy/.workbuddy/.codeartsdoer 删除；.codegraph 保留（daemon 活跃）
+
 ### 2026-09-01 项目自检审查修复
 - 7 项安全与逻辑问题修复（DEBUG print 泄露、cache 字段名、SSRF、注释、内存清理、GitHub 链接、URL 验证）
 - 详见 MEMORY.md "2026-09-01" 章节
@@ -196,7 +213,9 @@ D:\Ai工作\model-detective\
 2. **nssm 自动重启**: 进程退出后 nssm 会自动重启（AppExit=Restart）
 3. **按次收费模式已移除**: 不再有 pay_per_call 相关代码和 UI
 4. **PythonAnywhere 部署可能过期**: 主要使用 Cloudflare Tunnel 部署。备用实例 https://Evan05Ai.pythonanywhere.com（Beginner 免费版：CPU 100 秒/天，Quick 检测可用、Standard 约 1-2 次/天、Full 不可用；需每月在控制台点击 "Run until 1 month from today" 续命）
-5. **自检审查修复未推送**: commit `ee3b39b` 尚未 push 到 origin
+5. **多个 commit 未推送**: `ee3b39b`（09-01 自检修复）与 2026-09-03 清理相关 commit 均尚未 push 到 origin，推送时机由用户决定
+6. **隧道凭证需轮换**: `.cloudflared/` 凭证曾误提交进 git 历史（现已解除跟踪并 ignore，但历史仍存在），需在 Cloudflare 后台轮换
+7. **泄露的 API Key 需作废**: 已删除的 scripts/ 一次性脚本中硬编码了多个中转站 API Key 且已进 git 历史，需在各中转站后台作废
 
 ---
 

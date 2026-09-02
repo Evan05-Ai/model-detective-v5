@@ -8,6 +8,47 @@
 
 ---
 
+## 2026-09-03 工作区大清理（重要）
+
+### 背景
+用户要求全量扫描工作区并清理可删除/合并的文件。3 个探索智能体全量审计根目录散落文件、第三方包与 .venv 对照、目录/脚本/隐藏目录，关键结论交叉验证后经用户确认执行。
+
+### 核心发现
+1. **根目录整套第三方包是 2026-08-10 已放弃的阿里云 FC 部署残留**：`pip install -r requirements.txt -t .`（且当时用系统 Python 3.14 执行），459 个 git 跟踪文件（占仓库 611 个的 75%），遮蔽 .venv 同名包；regex/tiktoken 的 cp314 二进制在 3.12 服务下根本无法加载（regex 直接 import 报错，charset_normalizer 靠纯 Python 回退运行）
+2. **约 55 个零引用残留文件**：检测/测评输出（txt×33、json×10）、一次性自检脚本、空壳脚本、无关文件、过时设计稿
+3. **安全隐患**：`.cloudflared/` 隧道凭证曾被 git 跟踪入库；scripts/ 8 个一次性脚本硬编码至少 4 个真实 API Key（已进 git 历史）
+
+### 清理内容
+
+| 类别 | 处置 |
+|------|------|
+| 根目录第三方包（19 组目录 + bin/ + pyd） | git rm 移除；.venv 补装 tiktoken 0.14.0 / gunicorn 26.2.0 / regex 2026.9.3（cp312 正常轮子）；flask/requests 等版本不变，行为零变化 |
+| 检测/测评输出 | 全部删除（结论已沉淀于本文件） |
+| 一次性脚本 | _test_identity/_v1_verify/_v2_selfcheck.py、update_consistency.py(0B)、update_handover.py(36B) 删除 |
+| 过时设计稿 | FUSION_PLAN/STARTUP_GUIDE/test_framework/test_questions(+v2)/core_summary/execution_guide/scoring_sheet/visualization_template/STARTUP_PROMPT 删除（真实题库在 src/evaluation/eval_engine.py 内置常量中；STARTUP_PROMPT 的 PythonAnywhere 运维要点已并入 HANDOVER 注意事项） |
+| 无关/过时文件 | 根目录 index.html（股票 demo，与项目无关）、image.png、MEMORY.md.backup、server.err/log、1.1MB 报告 PDF、beikun 报告 md |
+| AI 工具目录 | .codebuddy/.workbuddy/.codeartsdoer 删除；.codegraph 保留（daemon 活跃使用中） |
+| 阿里云 FC | s.yaml、aliyun_fc_app.py、deploy_fc.sh/ps1、bootstrap 删除（docs/WORK_LOG_2026-08-10.md 有"失败/放弃"记录） |
+| 启动脚本 8→3 | 保留 restart_service.bat、install_flask_service.bat、start_named_tunnel.bat；删除 stop_tunnel.bat（杀服务进程，与 nssm AppExit=Restart 冲突）、start_web.bat（用已损坏的系统 Python）、start_tunnel.bat/ps1（快速隧道旧方案）、install_service.ps1（与 bat 重叠且 Tunnel 段过时） |
+| scripts/ | 删除 8 个 2026-07 一次性中转站测试脚本（含硬编码 Key）+ billing_audit_result.txt；保留 generate_test_pdf.py、billing_audit.py |
+| docs/ | 删除 0 字节文件 ×2 与 KIRO/LIGHTWEIGHT 方案稿；保留 BILLING_INTEGRITY_FIX / EVALUATION_GUIDE / WORK_LOG |
+| 安全 | .cloudflared/ 解除 git 跟踪并 ignore（文件保留在磁盘，隧道不受影响） |
+| 防复发 | .gitignore 增加 bin/、.cloudflared/、.codeartsdoer/、.codegraph/、.zcode/ |
+| 文档 | README 项目树校正（后端版本改 v2.9.1）；DEPLOY_CLOUDFLARE_TUNNEL.md 重写为 nssm + 命名隧道现状 |
+
+### 关键技术事实（防回归）
+- web/src 不直接 import tiktoken（src/utils/token_counter.py 有 ImportError 回退），tiktoken 仅供保留脚本使用及 requirements.txt 声明
+- run_web.py 会把项目根插入 sys.path——**永远不要在项目根执行 `pip install -t .`**
+- 删除文件不能清除 git 历史：隧道凭证轮换（Cloudflare 后台）与泄露 Key 作废（各中转站后台）需人工完成
+
+### 提交记录
+- `8a3dbad` docs: 提交上次会话遗留的 HANDOVER/MEMORY 更新
+- `5ce1619` chore: 移除误入仓库的根目录第三方依赖包
+- `4e463fc` chore: 清理历史检测输出、一次性脚本与过时设计稿
+- `7ed53f0` chore: 移除已放弃的阿里云 FC 部署文件并整合启动脚本
+
+---
+
 ## 2026-09-01 项目自检审查修复（7 项）
 
 ### 背景

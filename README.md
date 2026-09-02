@@ -3,7 +3,7 @@
 > 🔍 一站式 AI API 中转站检测工具：验证模型真伪、计费诚信、协议合规，并提供标准化模型能力测评。
 
 <p align="center">
-  <strong>Cosmic Galaxy v5.1</strong> · 前端 · 后端 v2.8.5
+  <strong>Cosmic Galaxy v5.1</strong> · 前端 · 后端 v2.9.1
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@ python run_web.py
 
 浏览器访问 `http://localhost:5000`
 
-> 💡 也可使用 Windows 批处理脚本：双击 `start_web.bat`
+> 💡 Windows 服务部署（nssm + Cloudflare Tunnel）见 [DEPLOY_CLOUDFLARE_TUNNEL.md](DEPLOY_CLOUDFLARE_TUNNEL.md)
 
 ---
 
@@ -142,12 +142,16 @@ model-detective/
 │   ├── test_anthropic/             # Anthropic 协议测试
 │   └── test_gemini/                # Gemini 协议测试
 ├── docs/
-│   └── EVALUATION_GUIDE.md         # 测评使用指南
-├── scripts/                        # 辅助脚本
+│   ├── BILLING_INTEGRITY_FIX_2026-08-11.md  # 计费检测修复报告
+│   ├── EVALUATION_GUIDE.md         # 测评使用指南
+│   └── WORK_LOG_2026-08-10.md      # 部署工作日志
+├── scripts/                        # 辅助脚本（PDF 样本生成、计费审计）
 ├── config.example.json             # 配置示例
-├── test_questions.md               # 测评题库
+├── detect.py                       # CLI 检测入口
 ├── run_web.py                      # Python 启动入口
-├── start_web.bat                   # Windows 启动脚本
+├── restart_service.bat             # Windows 服务重启（nssm，需管理员）
+├── install_flask_service.bat       # Windows 服务安装（nssm）
+├── start_named_tunnel.bat          # Cloudflare 命名隧道手动启动
 ├── requirements.txt                # 依赖列表
 ├── pytest.ini                      # 测试配置
 └── README.md                       # 本文件
