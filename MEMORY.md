@@ -1,10 +1,10 @@
 # Model Detective — 项目记忆文件
 
-> 最后更新: 2026-09-01 (UTC+8)
+> 最后更新: 2026-09-03 (UTC+8)
 > 当前版本: v2.9.1 后端（自检审查修复）+ Cosmic Galaxy v5.1 前端
-> 部署状态: Cloudflare Tunnel ✅ (detect.model-detective.online)
+> 部署状态: Cloudflare Tunnel ✅ (detect.model-detective.online，隧道 model-detective-v2)
 > 技术栈: Python Flask + Vanilla JS + HTML/CSS
-> GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
+> GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master，远端顶端 ef371e1 全部已推送)
 
 ---
 
@@ -41,11 +41,16 @@
 - run_web.py 会把项目根插入 sys.path——**永远不要在项目根执行 `pip install -t .`**
 - 删除文件不能清除 git 历史：隧道凭证轮换（Cloudflare 后台）与泄露 Key 作废（各中转站后台）需人工完成
 
-### 提交记录
+### 提交记录（9 个，2026-09-03 已全部推送，远端顶端 ef371e1）
 - `8a3dbad` docs: 提交上次会话遗留的 HANDOVER/MEMORY 更新
 - `5ce1619` chore: 移除误入仓库的根目录第三方依赖包
 - `4e463fc` chore: 清理历史检测输出、一次性脚本与过时设计稿
 - `7ed53f0` chore: 移除已放弃的阿里云 FC 部署文件并整合启动脚本
+- `d66734d` test: 修正 Gemini 测试断言以匹配 v2.7 重平衡（历史遗留失败）
+- `deccfe4` docs: 文档同步与安全加固（cloudflared 凭证解除跟踪）
+- `6c79557` feat(tunnel): Cloudflare 隧道凭证轮换落地
+- `ef371e1` fix: 自检修正（版本常量/GitHub 链接/残留 Key/计数）
+- （此前已存在的）`ee3b39b` fix: 2026-09-01 自检审查修复
 
 ---
 
@@ -82,7 +87,7 @@
 ### 最终状态
 - 隧道：仅 model-detective-v2（4 条边缘连接，Cloudflared 服务托管，开机自启）
 - git 历史：旧凭证/旧 Key 仍存在于历史 blob，但全部已失效，无需 history rewrite
-- 待办：用户可择机 push 全部本地 commit，让公开仓库顶端不再含敏感文件
+- **已全部推送（2026-09-03，7143903..ef371e1）**：公开仓库顶端 125 个文件，零敏感内容；GitHub Secret Scanning 若对历史 blob 报警可忽略
 
 ---
 

@@ -1,11 +1,11 @@
-﻿﻿﻿# Model Detective — 交接文档 v6.1
+﻿﻿﻿# Model Detective — 交接文档 v6.2
 
-> 创建时间: 2026-09-01 (UTC+8)
+> 创建时间: 2026-09-01 (UTC+8) · 最后更新: 2026-09-03 (UTC+8)
 > 项目路径: D:\Ai工作\model-detective
 > GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
 > 当前版本: 后端 v2.9.1 + 前端 Cosmic Galaxy v5.1
 > 部署: Cloudflare Tunnel → https://detect.model-detective.online
-> 最新 commit: ee3b39b fix: 修复安全漏洞与逻辑缺陷（自检审查）
+> 最新 commit: ef371e1 fix: 自检修正（已推送，本地与 origin/master 同步）
 
 ---
 
@@ -15,13 +15,13 @@
 
 | # | 修复内容 | Commit | 状态 |
 |---|----------|--------|------|
-| 1 | DEBUG print 泄露 API Key | `ee3b39b` | ✅ 已提交未推送 |
-| 2 | OpenAI cache 字段名错误 | `ee3b39b` | ✅ 已提交未推送 |
-| 3 | SSRF DNS 解析防护加强 | `ee3b39b` | ✅ 已提交未推送 |
-| 4 | Anthropic config 注释不一致 | `ee3b39b` | ✅ 已提交未推送 |
-| 5 | _EVAL_JOBS 清理机制 | `ee3b39b` | ✅ 已提交未推送 |
-| 6 | GitHub 链接修复 | `ee3b39b` | ✅ 已提交未推送 |
-| 7 | URL 自动发现验证加强 | `ee3b39b` | ✅ 已提交未推送 |
+| 1 | DEBUG print 泄露 API Key | `ee3b39b` | ✅ 已推送 |
+| 2 | OpenAI cache 字段名错误 | `ee3b39b` | ✅ 已推送 |
+| 3 | SSRF DNS 解析防护加强 | `ee3b39b` | ✅ 已推送 |
+| 4 | Anthropic config 注释不一致 | `ee3b39b` | ✅ 已推送 |
+| 5 | _EVAL_JOBS 清理机制 | `ee3b39b` | ✅ 已推送 |
+| 6 | GitHub 链接修复 | `ee3b39b` | ✅ 已推送 |
+| 7 | URL 自动发现验证加强 | `ee3b39b` | ✅ 已推送 |
 
 ### 1.2 前次修复（2026-08-29）
 
@@ -226,7 +226,7 @@ D:\Ai工作\model-detective\
 2. **nssm 自动重启**: 进程退出后 nssm 会自动重启（AppExit=Restart）
 3. **按次收费模式已移除**: 不再有 pay_per_call 相关代码和 UI
 4. **PythonAnywhere 部署可能过期**: 主要使用 Cloudflare Tunnel 部署。备用实例 https://Evan05Ai.pythonanywhere.com（Beginner 免费版：CPU 100 秒/天，Quick 检测可用、Standard 约 1-2 次/天、Full 不可用；需每月在控制台点击 "Run until 1 month from today" 续命）
-5. **多个 commit 未推送**: `ee3b39b`（09-01 自检修复）与 2026-09-03 清理相关 commit 均尚未 push 到 origin，推送时机由用户决定
+5. **全部提交已推送（2026-09-03）**: 远端顶端 `ef371e1`，本地与 origin/master 同步；公开仓库顶端 125 个文件零敏感内容（历史 blob 中的旧秘密均已失效，Secret Scanning 报警可忽略）
 6. **隧道凭证已轮换完成（2026-09-03）**: 旧隧道已删除、git 历史中的旧凭证已失效，无需再做 history rewrite；新服务配置在 `C:\Users\evanc\.cloudflared\config-v2.yml`（纯 ASCII 路径，勿改为含中文的路径——提权脚本/服务参数中的中文会被 GBK 乱码）
 7. **泄露的 API Key 已作废（2026-09-03）**: beikun.xyz×1、findcg×2、qlhazycoder×1 共 4 个 Key 用户已删除；如这些站仍在用，生成新 Key 后勿写入任何 git 跟踪文件（放 `config.local.json` 或环境变量）
 8. **本机测公网会被代理干扰**: 本机 curl 访问 detect.model-detective.online 偶发 10 秒黑洞（v2rayN/mitmproxy 层），`--noproxy "*"` 也可能命中；验证服务是否正常请用外部视角（手机流量/在线工具）
@@ -282,4 +282,27 @@ curl http://localhost:5000/api/providers
 
 ---
 
-*此文档由 2026-09-01 会话更新，记录自检审查修复的完整状态。*
+## 七、新会话（智能体）满血启动提示词
+
+> 新开任意 AI 对话框时，把下面整段复制为第一条消息，即可满血继承上下文。
+
+```
+你在 Model Detective 项目（D:\Ai工作\model-detective）工作，这是一个 AI API 中转站真伪检测 + 模型能力测评的 Python Flask 应用。
+
+第一步（必做）：完整阅读项目根目录的 HANDOVER.md（当前状态与交接，本提示词所在文件）和 MEMORY.md（完整修复历史）。这两份是被 git 跟踪的智能体身份文件，一切状态以它们为准，不要当作残留清理。今日工作日志见 docs/WORK_LOG_2026-09-03.md。
+
+关键约束（违反会出事故）：
+1. Python 一律用 .venv\Scripts\python.exe；严禁在项目根目录执行 pip install -t .（曾把 461 个第三方包误提交进仓库）
+2. .cloudflared/ 内是隧道凭证，已 gitignore，绝不能入库或外发；隧道为 model-detective-v2，由 Windows 服务 Cloudflared 托管（服务配置 C:\Users\evanc\.cloudflared\config-v2.yml，纯 ASCII 路径，勿改成含中文的路径）
+3. 重启服务需管理员权限：右键 restart_service.bat 以管理员身份运行；不要 taskkill 服务进程（nssm 配置了自动重启）
+4. 本机 curl 访问公网（含 github.com）会被 v2rayN/mitmproxy 代理层间歇吞包（约 10 秒黑洞），验证站点/仓库是否正常必须用外部视角（WebFetch、手机流量）
+5. 任何 API Key 不准写进 git 跟踪的文件（放 config.local.json 或环境变量）
+6. 改动代码后运行 .venv\Scripts\python.exe -m pytest tests/（当前 78 用例全部通过）
+7. 修改 start 脚本时注意：cloudflared 的 --config 必须放在 tunnel 之后、run 之前
+
+当前基线：后端 v2.9.1 + 前端 Cosmic Galaxy v5.1；部署 https://detect.model-detective.online；远端 origin/master = ef371e1 全部已推送；pytest 78/78；无遗留安全待办。
+```
+
+---
+
+*此文档由 2026-09-03 会话更新：工作区大清理 + 隧道凭证轮换 + 全量推送 + 自检修正。*
