@@ -1,8 +1,0 @@
-#!/bin/bash
-# 阿里云 FC 自定义运行时启动脚本
-
-# 安装依赖
-pip install flask requests jinja2 tiktoken -t /code
-
-# 启动应用
-python3 /code/aliyun_fc_app.py
