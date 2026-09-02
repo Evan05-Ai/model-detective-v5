@@ -1,17 +1,29 @@
-﻿﻿# Model Detective — 交接文档 v6.0
+﻿﻿﻿# Model Detective — 交接文档 v6.1
 
-> 创建时间: 2026-08-29 (UTC+8)
+> 创建时间: 2026-09-01 (UTC+8)
 > 项目路径: D:\Ai工作\model-detective
 > GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
-> 当前版本: 后端 v2.9.0 + 前端 Cosmic Galaxy v5.1
+> 当前版本: 后端 v2.9.1 + 前端 Cosmic Galaxy v5.1
 > 部署: Cloudflare Tunnel → https://detect.model-detective.online
-> 最新 commit: b05b96d refactor: 移除按次收费模式
+> 最新 commit: ee3b39b fix: 修复安全漏洞与逻辑缺陷（自检审查）
 
 ---
 
 ## 一、当前状态总览
 
-### 1.1 已完成的工作（2026-08-29）
+### 1.1 已完成的工作（2026-09-01 自检审查）
+
+| # | 修复内容 | Commit | 状态 |
+|---|----------|--------|------|
+| 1 | DEBUG print 泄露 API Key | `ee3b39b` | ✅ 已提交未推送 |
+| 2 | OpenAI cache 字段名错误 | `ee3b39b` | ✅ 已提交未推送 |
+| 3 | SSRF DNS 解析防护加强 | `ee3b39b` | ✅ 已提交未推送 |
+| 4 | Anthropic config 注释不一致 | `ee3b39b` | ✅ 已提交未推送 |
+| 5 | _EVAL_JOBS 清理机制 | `ee3b39b` | ✅ 已提交未推送 |
+| 6 | GitHub 链接修复 | `ee3b39b` | ✅ 已提交未推送 |
+| 7 | URL 自动发现验证加强 | `ee3b39b` | ✅ 已提交未推送 |
+
+### 1.2 前次修复（2026-08-29）
 
 | # | 修复内容 | Commit | 状态 |
 |---|----------|--------|------|
@@ -21,7 +33,7 @@
 | 4 | OpenAI rstrip('/v1') 陷阱修复 | `74add10` | ✅ 已提交已推送 |
 | 5 | 按次收费模式整体移除 | `b05b96d` | ✅ 已提交已推送 |
 
-### 1.2 检测验证结果
+### 1.3 检测验证结果
 
 gorouter.app 检测**成功**：
 - 模型: claude-opus-4-8（实际返回 claude-opus-5）
@@ -30,7 +42,7 @@ gorouter.app 检测**成功**：
 - 14 次请求，Tokens 111346，费用 $4.3425，耗时 31.4s
 - 检测到 Kiro 代理链路
 
-### 1.3 服务状态
+### 1.4 服务状态
 
 | 项目 | 值 |
 |------|-----|
@@ -44,49 +56,35 @@ gorouter.app 检测**成功**：
 
 ---
 
-## 二、本次修复的技术详情
+## 二、本次修复的技术详情（2026-09-01 自检审查）
 
-### 2.1 Cloudflare WAF 403 绕过 (`3fa9bed`)
+### 2.1 DEBUG print 泄露 API Key
+**问题**: `src/protocols/anthropic/client.py` 中 6 处 `print(f"[DEBUG]...")` 语句，其中第 142 行打印 `headers={dict(resp.headers)}`，包含 `x-api-key` 认证头。
+**修复**: 删除全部 6 处 DEBUG print 语句。
 
-**问题**: gorouter.app、tabitoken.com 部署了 Cloudflare WAF，拦截 python-requests 默认 User-Agent，返回 403。
+### 2.2 OpenAI cache 字段名错误
+**问题**: `src/protocols/openai/detectors/billing_integrity.py` 使用 `cache_read_tokens`/`cache_creation_tokens`（Anthropic 字段名），OpenAI 的缓存信息在 `usage.prompt_tokens_details.cached_tokens` 中。
+**修复**: 改为从 `resp.raw_response` 中提取 OpenAI 格式的 `prompt_tokens_details.cached_tokens`。
 
-**修复**: 在所有 HTTP 请求中注入浏览器 UA 和 Accept 头。
+### 2.3 SSRF 防护加强
+**问题**: `_validate_base_url_no_ssrf` 只做字符串前缀匹配，域名解析到内网 IP 可绕过。
+**修复**: 添加 DNS 解析 + `ipaddress` 内网 CIDR 检查（127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 0.0.0.0/8, ::1/128, fc00::/7, fe80::/10）。
 
-**修改文件**:
-- `src/core/http_utils.py` — 新增 `BROWSER_HEADERS` 常量
-- `src/protocols/base_client.py` — session 创建时注入
-- `src/api_client.py` — session 创建时注入
-- `src/core/protocol_resolver.py` — 所有探测请求注入
-- `web/app.py` — `/api/probe` 端点注入
+### 2.4 Anthropic config 注释更新
+**问题**: 注释中的权重表与 v2.6 代码不一致（identity 0.10→0.12, behavioral_signature 0.08→0.04, knowledge 0.07→0.06, integrity 0.06→0.08, long_context 0.02→0.03）。
+**修复**: 更新注释匹配代码中的实际权重值。
 
-### 2.2 /v1/v1 重复拼接修复 (`d584aaa`)
+### 2.5 _EVAL_JOBS 清理机制
+**问题**: `_EVAL_JOBS` 字典无清理机制，长时间运行内存持续增长。
+**修复**: 添加 `_gc_eval_jobs()` 函数（上限 200，清理已完成/错误任务），在创建新任务时调用。
 
-**问题**: `protocol_resolver` 探活成功后无条件追加 `/v1`，导致 `https://gorouter.app/v1/v1`。
+### 2.6 GitHub 链接修复
+**问题**: `index.html` 中 GitHub 链接指向 `https://github.com`（通用首页）。
+**修复**: 改为 `https://github.com/Evan05-Ai/model-detective-v5`。
 
-**修复**: 追加前检查 base_url 是否已以 `/v1` 结尾。
-
-**修改文件**:
-- `src/core/protocol_resolver.py` — 条件追加
-- `src/protocols/anthropic/client.py` — 用切片替代 rstrip
-
-### 2.3 rstrip('/v1') 陷阱修复 (`74add10`)
-
-**问题**: `str.rstrip('/v1')` 删除的是字符集合 `{/, v, 1}` 而非字符串后缀。若 URL 包含这些字符会被误删。
-
-**修复**: 用切片 `base[:-3]` 精确移除末尾的 `/v1`。
-
-**修改文件**:
-- `src/protocols/openai/client.py` — `_try_resolve_chat_url()` 方法
-
-### 2.4 按次收费模式移除 (`b05b96d`)
-
-**原因**: 用户验证不勾选按次收费也能成功检测。按次收费模式仅减少检测器数量+改变计费方式，非特殊检测逻辑，增加代码复杂度。
-
-**移除范围** (-314 行):
-- `web/app.py` — pay_per_call/cost_per_request 参数及检测器过滤逻辑
-- `web/static/app.js` — payPerCall/costPerRequest 状态及 initPayPerCall 函数
-- `web/templates/index.html` — 按次收费 UI 区块
-- `web/static/style.css` — 按次收费相关样式
+### 2.7 URL 自动发现验证加强
+**问题**: `_try_resolve_url` 只要 200 + JSON dict 就缓存 URL，中转站错误页面可能返回 200 + JSON。
+**修复**: 增加 Anthropic 响应字段验证（要求包含 `content`/`error` + `role`/`id`）。
 
 ---
 
@@ -113,14 +111,20 @@ D:\Ai工作\model-detective\
 │   │   ├── http_utils.py       # HTTP 工具（含 BROWSER_HEADERS）
 │   │   ├── protocol_resolver.py # 协议自动识别
 │   │   ├── runner.py           # 检测运行器
-│   │   └── modes.py            # 检测模式配置
+│   │   ├── modes.py            # 检测模式配置
+│   │   ├── scorer.py           # 三维加权评分引擎
+│   │   ├── models.py           # 数据模型定义
+│   │   ├── detector_base.py    # 检测器基类
+│   │   └── error_standards.py  # 错误评分标准
 │   ├── protocols/
 │   │   ├── base_client.py      # 协议客户端基类
 │   │   ├── openai/
 │   │   │   ├── client.py       # OpenAI 客户端（含 URL 自动发现）
+│   │   │   ├── config.py       # OpenAI 检测器配置
 │   │   │   └── detectors/      # OpenAI 检测器
 │   │   ├── anthropic/
 │   │   │   ├── client.py       # Anthropic 客户端
+│   │   │   ├── config.py       # Anthropic 检测器配置
 │   │   │   └── detectors/      # Anthropic 检测器
 │   │   └── gemini/
 │   │       ├── client.py       # Gemini 客户端
@@ -128,21 +132,22 @@ D:\Ai工作\model-detective\
 │   ├── utils/                  # 共享工具（consistency_scorer, identity_analyzer）
 │   └── evaluation/             # 测评引擎
 ├── MEMORY.md                   # 项目记忆文件
-├── HANDOVER.md                 # 本文件
-└── .venv/                      # Python 虚拟环境
+<|endoftext|>
 ```
 
 ### 3.2 关键代码位置
 
 | 功能 | 文件 | 行号 | 说明 |
 |------|------|------|------|
+| SSRF 防护 | `web/app.py` | 121-195 | `_validate_base_url_no_ssrf()`（含 DNS 解析） |
 | 探测 URL 生成 | `web/app.py` | 100-118 | `_model_probe_urls()` |
-| 探测逻辑 | `web/app.py` | 195-275 | 401/403 处理 |
 | 检测执行 | `web/app.py` | 538-616 | `_execute_single_detection()` |
 | 协议解析 | `src/core/protocol_resolver.py` | 60-88 | `resolve()` |
 | URL 发现 | `src/core/protocol_resolver.py` | 90-150 | `_resolve_openai_base_url()` |
 | OpenAI chat URL | `src/protocols/openai/client.py` | 36-85 | `_get_chat_url()` |
 | 浏览器头常量 | `src/core/http_utils.py` | - | `BROWSER_HEADERS` |
+| 评分引擎 | `src/core/scorer.py` | - | `calculate_scores()` + `determine_verdict()` |
+| 后端来源推断 | `src/core/scorer.py` | - | `infer_backend_source()` + `calibrate_by_backend()` |
 
 ### 3.3 技术栈
 
@@ -155,6 +160,10 @@ D:\Ai工作\model-detective\
 ---
 
 ## 四、历史修复记录（按时间倒序）
+
+### 2026-09-01 项目自检审查修复
+- 7 项安全与逻辑问题修复（DEBUG print 泄露、cache 字段名、SSRF、注释、内存清理、GitHub 链接、URL 验证）
+- 详见 MEMORY.md "2026-09-01" 章节
 
 ### 2026-08-29 按次收费中转站支持修复
 - WAF 绕过 + /v1/v1 修复 + rstrip 修复 + 按次收费模式移除
@@ -187,6 +196,7 @@ D:\Ai工作\model-detective\
 2. **nssm 自动重启**: 进程退出后 nssm 会自动重启（AppExit=Restart）
 3. **按次收费模式已移除**: 不再有 pay_per_call 相关代码和 UI
 4. **PythonAnywhere 部署可能过期**: 主要使用 Cloudflare Tunnel 部署
+5. **自检审查修复未推送**: commit `ee3b39b` 尚未 push 到 origin
 
 ---
 
@@ -239,4 +249,4 @@ curl http://localhost:5000/api/providers
 
 ---
 
-*此文档由 2026-08-29 会话创建，记录按次收费中转站修复和模式移除的完整状态。*
+*此文档由 2026-09-01 会话更新，记录自检审查修复的完整状态。*

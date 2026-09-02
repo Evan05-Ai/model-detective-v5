@@ -1,10 +1,41 @@
 # Model Detective — 项目记忆文件
 
-> 最后更新: 2026-08-29 (UTC+8)
-> 当前版本: v2.9.0 后端（按次收费模式已移除）+ Cosmic Galaxy v5.1 前端
+> 最后更新: 2026-09-01 (UTC+8)
+> 当前版本: v2.9.1 后端（自检审查修复）+ Cosmic Galaxy v5.1 前端
 > 部署状态: Cloudflare Tunnel ✅ (detect.model-detective.online)
 > 技术栈: Python Flask + Vanilla JS + HTML/CSS
 > GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
+
+---
+
+## 2026-09-01 项目自检审查修复（7 项）
+
+### 背景
+对项目进行全面代码审查，从第三方安全与质量审计视角发现 7 个问题并全部修复。
+
+### 修复清单
+
+| 优先级 | 问题 | 修复 | Commit |
+|--------|------|------|--------|
+| P0 | anthropic/client.py 中 6 处 DEBUG print 语句泄露 API Key（含 headers） | 删除全部 6 处 | `ee3b39b` |
+| P0 | OpenAI billing_integrity cache 字段名错误（用 Anthropic 字段名） | 改为 OpenAI 格式 `prompt_tokens_details.cached_tokens` | `ee3b39b` |
+| P1 | SSRF 防护仅做字符串前缀匹配，可被 DNS 解析到内网 IP 绕过 | 添加 DNS 解析 + ipaddress 内网 CIDR 检查（9 个网段） | `ee3b39b` |
+| P1 | Anthropic config.py 注释与 v2.6 实际权重不一致（5 处） | 更新注释匹配代码 | `ee3b39b` |
+| P2 | _EVAL_JOBS 无清理机制，内存持续增长 | 添加 `_gc_eval_jobs()` 清理函数（上限 200） | `ee3b39b` |
+| P2 | index.html GitHub 链接指向通用首页 | 改为项目仓库 `Evan05-Ai/model-detective-v5` | `ee3b39b` |
+| P2 | Anthropic client URL 自动发现验证不够严格（200+JSON dict 即缓存） | 增加 content/error + role/id 字段验证 | `ee3b39b` |
+
+### 修改文件
+- `src/protocols/anthropic/client.py` — 删除 DEBUG print + URL 发现验证加强
+- `src/protocols/openai/detectors/billing_integrity.py` — cache 字段名修复
+- `web/app.py` — SSRF DNS 解析检查 + _gc_eval_jobs 清理机制
+- `src/protocols/anthropic/config.py` — 注释更新
+- `web/templates/index.html` — GitHub 链接修复
+
+### 验证
+- ✅ 所有文件语法检查通过
+- ✅ Anthropic/OpenAI 配置校验通过（权重和 = 1.0）
+- ✅ DEBUG print 语句已完全清除
 
 ---
 
