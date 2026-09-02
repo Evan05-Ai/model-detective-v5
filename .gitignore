@@ -109,3 +109,14 @@ scripts/billing_audit_result.txt
 # =====================
 .DS_Store
 desktop.ini
+
+# =====================
+# Cleanup guards (2026-09-03)
+# =====================
+# 防复发：2026-08-10 阿里云 FC 部署曾执行 pip install -r requirements.txt -t .，
+# 把整套第三方包装进仓库根目录并被误提交（已全部移除）。不要再对项目根目录用 -t 安装。
+bin/
+# AI / MCP 工具的缓存与工作目录
+.codeartsdoer/
+.codegraph/
+.zcode/
