@@ -150,8 +150,9 @@ Full 检测如果偶尔超时，重试即可
 | `restart_service.bat` | 重启 Flask 服务（nssm，需管理员） |
 | `install_flask_service.bat` | Flask 服务安装（nssm，需管理员） |
 | `start_named_tunnel.bat` | 命名隧道手动启动 |
-| `.cloudflared/config.yml` | 隧道 ingress 配置（已 gitignore） |
-| `.cloudflared/model-detective.json` | 隧道凭证（已 gitignore） |
+| `C:\Users\evanc\.cloudflared\config-v2.yml` | Cloudflared **服务**专用配置（隧道 model-detective-v2） |
+| `.cloudflared/config.yml` | 项目内隧道 ingress 配置（手动运行用，已 gitignore） |
+| `.cloudflared/model-detective-v2.json` | 新隧道凭证（已 gitignore） |
 
 ---
 

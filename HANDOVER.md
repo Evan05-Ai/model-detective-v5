@@ -55,7 +55,7 @@ gorouter.app 检测**成功**：
 
 ### 1.5 2026-09-03 工作区大清理
 
-- 移除误入仓库的根目录第三方包 459 个文件（阿里云 FC `pip install -t .` 残留），依赖改由 .venv 提供（已补装 tiktoken/gunicorn/regex，flask/requests 等版本不变）
+- 移除误入仓库的根目录第三方包 461 个跟踪文件（阿里云 FC `pip install -t .` 残留），依赖改由 .venv 提供（已补装 tiktoken/gunicorn/regex，flask/requests 等版本不变）
 - 清理约 55 个历史残留文件（检测输出、一次性脚本、过时设计稿、AI 工具目录、缓存）
 - 阿里云 FC 部署文件移除；启动脚本 8 个整合为 3 个
 - `.cloudflared/` 凭证解除 git 跟踪；scripts/ 中含硬编码 Key 的一次性测试脚本已删除
@@ -183,7 +183,7 @@ D:\Ai工作\model-detective\
 - 泄露 Key 已由用户作废；零停机完成（切换期间由临时 connector 承载流量）
 
 ### 2026-09-03 工作区大清理
-- **根目录第三方包移除**（459 个 git 跟踪文件）：2026-08-10 已放弃的阿里云 FC 部署执行 `pip install -r requirements.txt -t .` 产生，且当时用 Python 3.14 安装——cp314 二进制在 3.12 venv 下无法加载，还遮蔽 venv 同名包。依赖改由 .venv 提供
+- **根目录第三方包移除**（461 个 git 跟踪文件）：2026-08-10 已放弃的阿里云 FC 部署执行 `pip install -r requirements.txt -t .` 产生，且当时用 Python 3.14 安装——cp314 二进制在 3.12 venv 下无法加载，还遮蔽 venv 同名包。依赖改由 .venv 提供
 - **约 55 个零引用残留文件删除**：检测/测评输出 txt×33 + json×10、一次性自检脚本（_test_identity/_v1_verify/_v2_selfcheck）、空壳脚本（update_consistency.py 0B / update_handover.py 36B）、无关的股票 demo index.html、过时设计稿（FUSION_PLAN/STARTUP_GUIDE/test_framework/test_questions(+v2)/core_summary/execution_guide/scoring_sheet/visualization_template/STARTUP_PROMPT，真实题库在 eval_engine.py 内置常量）
 - **scripts/ 清理**：删除 8 个 2026-07 一次性中转站测试脚本（含硬编码 API Key）；保留 generate_test_pdf.py、billing_audit.py
 - **阿里云 FC 五件套删除**：s.yaml、aliyun_fc_app.py、deploy_fc.sh/ps1、bootstrap

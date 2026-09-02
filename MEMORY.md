@@ -14,7 +14,7 @@
 用户要求全量扫描工作区并清理可删除/合并的文件。3 个探索智能体全量审计根目录散落文件、第三方包与 .venv 对照、目录/脚本/隐藏目录，关键结论交叉验证后经用户确认执行。
 
 ### 核心发现
-1. **根目录整套第三方包是 2026-08-10 已放弃的阿里云 FC 部署残留**：`pip install -r requirements.txt -t .`（且当时用系统 Python 3.14 执行），459 个 git 跟踪文件（占仓库 611 个的 75%），遮蔽 .venv 同名包；regex/tiktoken 的 cp314 二进制在 3.12 服务下根本无法加载（regex 直接 import 报错，charset_normalizer 靠纯 Python 回退运行）
+1. **根目录整套第三方包是 2026-08-10 已放弃的阿里云 FC 部署残留**：`pip install -r requirements.txt -t .`（且当时用系统 Python 3.14 执行），461 个 git 跟踪文件（占仓库 611 个的 75%），遮蔽 .venv 同名包；regex/tiktoken 的 cp314 二进制在 3.12 服务下根本无法加载（regex 直接 import 报错，charset_normalizer 靠纯 Python 回退运行）
 2. **约 55 个零引用残留文件**：检测/测评输出（txt×33、json×10）、一次性自检脚本、空壳脚本、无关文件、过时设计稿
 3. **安全隐患**：`.cloudflared/` 隧道凭证曾被 git 跟踪入库；scripts/ 8 个一次性脚本硬编码至少 4 个真实 API Key（已进 git 历史）
 

@@ -18,8 +18,13 @@ from src.protocols.openai.detectors.billing_integrity import BillingIntegrityDet
 from src.protocols.openai.detectors.token_billing import TokenBillingDetector
 
 BASE_URL = "https://api.qlhazycoder.top"
-API_KEY = "sk-TNzA1LklDBsUBP7WFReFIlUis0pZTNfS2CYdKHQFmwTDnxTP"
+# 原硬编码 Key 已因泄露进公开 git 历史而作废，改从环境变量读取
+API_KEY = os.environ.get("QLHAZYCODER_API_KEY", "")
 MODEL = "claude-opus-4-8"
+
+if not API_KEY:
+    print("请先设置环境变量 QLHAZYCODER_API_KEY（原硬编码 Key 已作废，勿再写回代码）")
+    sys.exit(1)
 
 results = []
 
