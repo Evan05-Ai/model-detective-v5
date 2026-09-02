@@ -113,7 +113,7 @@ def test_build_active_detectors():
     assert "structured_output" in names
     assert "protocol" in names
     assert "token_usage" in names
-    assert len(dets) == 7  # 6 original + billing_integrity
+    assert len(dets) == 8  # 6 original + billing_integrity + consistency (v2.7)
     print("  [OK] test_build_active_detectors")
 
 
@@ -199,12 +199,13 @@ def test_token_usage_detector():
     print(f"  [OK] test_token_usage_detector (score={result.score})")
 
 
-def test_function_calling_weight_highest():
-    """Gemini 中 function_calling 权重最高"""
-    assert WEIGHTS["function_calling"] == 0.18
+def test_gemini_weight_rebalance_v2_7():
+    """Gemini 权重与 v2.7 重平衡一致（2026-08-03 Consistency 重构）"""
+    assert WEIGHTS["function_calling"] == 0.14  # v2.7: 0.18 -> 0.14
+    assert WEIGHTS["consistency"] == 0.10       # v2.7 新增
     max_weight = max(WEIGHTS.values())
-    assert WEIGHTS["function_calling"] == max_weight
-    print("  [OK] test_function_calling_weight_highest")
+    assert WEIGHTS["basic_request"] == max_weight  # 重平衡后 basic_request 权重最高
+    print("  [OK] test_gemini_weight_rebalance_v2_7")
 
 
 class MockBillingGeminiClient:
