@@ -26,7 +26,7 @@ echo  访问地址: https://detect.model-detective.online
 echo  --------------------------------------------
 echo.
 
-"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel run fd06a112-b78b-492e-8e81-33c20ef93fa7
+"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --config "d:\Ai工作\model-detective\.cloudflared\config.yml" run 3afd1108-3572-4fbe-b841-b5f7cd9d23fa
 
 echo.
 echo  [INFO] 隧道已断开

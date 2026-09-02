@@ -46,10 +46,9 @@ gorouter.app 检测**成功**：
 
 | 项目 | 值 |
 |------|-----|
-| 服务名 | ModelDetectiveFlask (nssm 管理) |
-| 启动命令 | python.exe run_web.py |
-| 端口 | 5000 |
-| 当前 PID | 27072 (启动于 2026-08-29 14:54:13) |
+| Flask 服务 | ModelDetectiveFlask (nssm 管理)，python.exe run_web.py，端口 5000 |
+| 隧道服务 | Cloudflared（Windows 服务，开机自启），承载隧道 model-detective-v2 |
+| 隧道配置 | 服务用 `C:\Users\evanc\.cloudflared\config-v2.yml`；手动运行用项目 `.cloudflared/config.yml` |
 | nssm 配置 | AppExit=Restart (自动重启) |
 | 重启方式 | 右键 restart_service.bat → 以管理员身份运行 |
 | 公网访问 | https://detect.model-detective.online |
@@ -61,6 +60,15 @@ gorouter.app 检测**成功**：
 - 阿里云 FC 部署文件移除；启动脚本 8 个整合为 3 个
 - `.cloudflared/` 凭证解除 git 跟踪；scripts/ 中含硬编码 Key 的一次性测试脚本已删除
 - 详见 MEMORY.md "2026-09-03 工作区大清理" 章节
+
+### 1.6 2026-09-03 Cloudflare 隧道凭证轮换（同日续）
+
+- 背景：旧隧道凭证 `.cloudflared/model-detective.json` 曾随 commit `9cbb8dc` 推送到公开 GitHub 仓库（仓库为公开仓库），且 origin/master 顶端仍保留
+- 新建隧道 **model-detective-v2**（UUID `3afd1108-3572-4fbe-b841-b5f7cd9d23fa`）；CNAME 经 `tunnel route dns --overwrite-dns` 切换
+- Cloudflared 服务启动参数改为 `tunnel --config C:\Users\evanc\.cloudflared\config-v2.yml run 3afd1108-…`（原 token-file 模式废弃）；`C:\ProgramData\cloudflared\token`（含旧 Secret）已删除
+- **旧隧道 model-detective（fd06a112-…）已删除 → 泄露的旧 TunnelSecret 永久失效**
+- 泄露的 4 个中转站 API Key（beikun×1 / findcg×2 / qlhazycoder×1）用户已全部作废
+- 技术坑记录见 MEMORY.md 同名章节
 
 ---
 
@@ -169,6 +177,11 @@ D:\Ai工作\model-detective\
 
 ## 四、历史修复记录（按时间倒序）
 
+### 2026-09-03（续）Cloudflare 隧道凭证轮换
+- 新隧道 model-detective-v2（3afd1108-3572-4fbe-b841-b5f7cd9d23fa）上线，CNAME 已切换，旧隧道已删除、旧 Secret 永久失效
+- Cloudflared 服务改为本地配置文件模式（config-v2.yml），ProgramData 旧 token 文件已删
+- 泄露 Key 已由用户作废；零停机完成（切换期间由临时 connector 承载流量）
+
 ### 2026-09-03 工作区大清理
 - **根目录第三方包移除**（459 个 git 跟踪文件）：2026-08-10 已放弃的阿里云 FC 部署执行 `pip install -r requirements.txt -t .` 产生，且当时用 Python 3.14 安装——cp314 二进制在 3.12 venv 下无法加载，还遮蔽 venv 同名包。依赖改由 .venv 提供
 - **约 55 个零引用残留文件删除**：检测/测评输出 txt×33 + json×10、一次性自检脚本（_test_identity/_v1_verify/_v2_selfcheck）、空壳脚本（update_consistency.py 0B / update_handover.py 36B）、无关的股票 demo index.html、过时设计稿（FUSION_PLAN/STARTUP_GUIDE/test_framework/test_questions(+v2)/core_summary/execution_guide/scoring_sheet/visualization_template/STARTUP_PROMPT，真实题库在 eval_engine.py 内置常量）
@@ -214,8 +227,9 @@ D:\Ai工作\model-detective\
 3. **按次收费模式已移除**: 不再有 pay_per_call 相关代码和 UI
 4. **PythonAnywhere 部署可能过期**: 主要使用 Cloudflare Tunnel 部署。备用实例 https://Evan05Ai.pythonanywhere.com（Beginner 免费版：CPU 100 秒/天，Quick 检测可用、Standard 约 1-2 次/天、Full 不可用；需每月在控制台点击 "Run until 1 month from today" 续命）
 5. **多个 commit 未推送**: `ee3b39b`（09-01 自检修复）与 2026-09-03 清理相关 commit 均尚未 push 到 origin，推送时机由用户决定
-6. **隧道凭证需轮换**: `.cloudflared/` 凭证曾误提交进 git 历史（现已解除跟踪并 ignore，但历史仍存在），需在 Cloudflare 后台轮换
-7. **泄露的 API Key 需作废**: 已删除的 scripts/ 一次性脚本中硬编码了多个中转站 API Key 且已进 git 历史，需在各中转站后台作废
+6. **隧道凭证已轮换完成（2026-09-03）**: 旧隧道已删除、git 历史中的旧凭证已失效，无需再做 history rewrite；新服务配置在 `C:\Users\evanc\.cloudflared\config-v2.yml`（纯 ASCII 路径，勿改为含中文的路径——提权脚本/服务参数中的中文会被 GBK 乱码）
+7. **泄露的 API Key 已作废（2026-09-03）**: beikun.xyz×1、findcg×2、qlhazycoder×1 共 4 个 Key 用户已删除；如这些站仍在用，生成新 Key 后勿写入任何 git 跟踪文件（放 `config.local.json` 或环境变量）
+8. **本机测公网会被代理干扰**: 本机 curl 访问 detect.model-detective.online 偶发 10 秒黑洞（v2rayN/mitmproxy 层），`--noproxy "*"` 也可能命中；验证服务是否正常请用外部视角（手机流量/在线工具）
 
 ---
 

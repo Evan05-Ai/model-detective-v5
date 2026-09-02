@@ -49,6 +49,43 @@
 
 ---
 
+## 2026-09-03（续）Cloudflare 隧道凭证轮换 + 泄露 Key 作废（重要）
+
+### 背景
+大清理中发现两处已进公开 GitHub 历史的敏感信息：① 旧隧道凭证 `.cloudflared/model-detective.json`（随 commit `9cbb8dc` 推送，origin/master 顶端仍存在）；② scripts/ 一次性脚本中硬编码的 4 个中转站 API Key。用户作废了 API Key，并授权执行隧道凭证轮换。
+
+### 泄露 Key 清单（已全部作废）
+| 中转站 | Key 脱敏 | 所在脚本(已删) |
+|--------|----------|----------------|
+| beikun.xyz | sk-gEuvYki8HDZ3…U6ISO | beikun_quick/full/v2_test ×3 |
+| findcg.com | sk-10662345e509…d853b5 | findcg_full/dual_key/key1_ultimate/authenticity ×4 |
+| findcg.com | sk-5e8c6c07b431…d4d7a | findcg_dual_key_test |
+| api.qlhazycoder.top | sk-TNzA1LklDBsU…DnxTP | minimal_billing_test |
+
+（atai8/dmxcode/routerteam/gorouter 等站点的 Key 只出现在从未提交的本地输出 txt 中，不属于 git 泄露）
+
+### 轮换执行过程（零停机）
+1. `cloudflared tunnel login` 重新浏览器授权（本机 cert.pem 此前缺失），账号 1016887000@qq.com
+2. `cloudflared tunnel create model-detective-v2` → 新 UUID **3afd1108-3572-4fbe-b841-b5f7cd9d23fa**
+3. 临时 connector（用户会话后台进程，用项目 config.yml）先行连入新隧道
+4. `cloudflared tunnel route dns --overwrite-dns model-detective-v2 detect.model-detective.online` 切换 CNAME，公网验证 200
+5. Windows 服务 **Cloudflared** 启动参数改为 `"cloudflared.exe" tunnel --config C:\Users\evanc\.cloudflared\config-v2.yml run 3afd1108-…`（直接 Set-ItemProperty 写注册表 ImagePath），服务重启
+6. 停临时 connector → 服务成唯一承载方 → `cloudflared tunnel delete model-detective` 删除旧隧道（fd06a112-…）→ **旧泄露 Secret 永久失效**
+7. `C:\ProgramData\cloudflared\token`（含旧 Secret 的服务令牌文件）已删除；项目内旧凭证 json、token 副本等残留已清理
+
+### 关键坑（防回归）
+1. **`--config` 位置**：`cloudflared tunnel run --config x` 报 "flag provided but not defined"——必须写 `cloudflared tunnel --config x run <TUNNEL>`
+2. **sc.exe binPath= 引号陷阱**：PowerShell 传含内嵌引号的 binPath 给 sc.exe 会被静默吞掉（qc 查询发现未生效）——应直接 `Set-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\<svc> -Name ImagePath -Type ExpandString`
+3. **PowerShell 5.1 按 ANSI 读 .ps1**：提权脚本内容含中文路径（d:\Ai工作\…）被 GBK 误解成乱码 → cloudflared 找不到配置退出（服务 1067）。服务参数一律用纯 ASCII 路径（故服务专用 `C:\Users\evanc\.cloudflared\config-v2.yml`）
+4. **本机验证公网会被代理层干扰**：v2rayN/mitmproxy 环境下 curl 访问公网偶发整 10 秒黑洞（外部视角 WebFetch 同时段完全正常）——验证站点是否正常必须用外部网络视角
+
+### 最终状态
+- 隧道：仅 model-detective-v2（4 条边缘连接，Cloudflared 服务托管，开机自启）
+- git 历史：旧凭证/旧 Key 仍存在于历史 blob，但全部已失效，无需 history rewrite
+- 待办：用户可择机 push 全部本地 commit，让公开仓库顶端不再含敏感文件
+
+---
+
 ## 2026-09-01 项目自检审查修复（7 项）
 
 ### 背景
