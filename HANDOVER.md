@@ -195,7 +195,7 @@ D:\Ai工作\model-detective\
 1. **服务重启需管理员权限**: 当前 shell 无管理员权限，需右键 `restart_service.bat` → 以管理员身份运行
 2. **nssm 自动重启**: 进程退出后 nssm 会自动重启（AppExit=Restart）
 3. **按次收费模式已移除**: 不再有 pay_per_call 相关代码和 UI
-4. **PythonAnywhere 部署可能过期**: 主要使用 Cloudflare Tunnel 部署
+4. **PythonAnywhere 部署可能过期**: 主要使用 Cloudflare Tunnel 部署。备用实例 https://Evan05Ai.pythonanywhere.com（Beginner 免费版：CPU 100 秒/天，Quick 检测可用、Standard 约 1-2 次/天、Full 不可用；需每月在控制台点击 "Run until 1 month from today" 续命）
 5. **自检审查修复未推送**: commit `ee3b39b` 尚未 push 到 origin
 
 ---
