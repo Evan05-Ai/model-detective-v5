@@ -71,6 +71,11 @@ DEFAULT_PRIORITY = 2
 # 早终止预算阈值
 EARLY_TERMINAL_BUDGET_THRESHOLD = 0.30  # 预算剩余 < 30% 时触发早终止
 
+# v3.0.1: 费用保护硬止损倍数。实际上报用量（预算口径）达到预算的 3 倍时，
+# 中止剩余检测组。正常检测器请求极小（prompt <200 tok, max_tokens ≤1500），
+# 触发该止损只可能是中转站上报异常巨大的用量（ plain input 虚增等）。
+HARD_STOP_BUDGET_MULTIPLIER = 3
+
 
 class Runner:
     """两阶段并行调度器（v2.7 渐进式探测版）"""
@@ -96,8 +101,14 @@ class Runner:
         self.max_workers = max_workers
         self._observe_queue: queue.Queue = queue.Queue()
         self._token_budget = get_token_budget(mode)
-        self._tokens_used = 0
-        self._budget_lock = threading.Lock()
+        # v3.0.1: 预算记账模型重构。
+        #   旧模型：检测器自报 cost_tokens（= 中转站上报的 total_tokens，含缓存读取
+        #   全价）回填预算 → Kiro 类中转站每次响应上报数万 cache_read，2-3 个请求
+        #   就"耗尽" 100k 预算，10/13 检测器被跳过。
+        #   新模型：实际消耗由客户端预算计数器（剔除缓存读取）统一计量，
+        #   运行中的检测器只贡献预估占用（reserved），完成后释放。
+        self._reserved_tokens = 0
+        self._budget_lock = threading.RLock()
 
     def run(self) -> "DetectionReport":
         """执行两阶段检测（v2.7 渐进式版）"""
@@ -130,6 +141,17 @@ class Runner:
             if priority > 1:
                 has_critical = any(r.has_critical for r in results)
                 budget_remaining_pct = self._budget_remaining_pct()
+
+                # v3.0.1: 费用保护硬止损——实际上报用量异常巨大时中止剩余检测
+                used_now = self._budget_used()
+                if used_now > self._token_budget * HARD_STOP_BUDGET_MULTIPLIER:
+                    results.extend(self._skip_detectors(
+                        detectors,
+                        f"费用保护：中转站上报用量异常（预算口径已用 {used_now}，"
+                        f"达预算 {self._token_budget} 的 {used_now / self._token_budget:.1f} 倍），"
+                        f"中止剩余检测。该中转站单次请求 token 消耗异常巨大，请结合计费审计结果警惕。"
+                    ))
+                    continue
 
                 if has_critical and budget_remaining_pct < EARLY_TERMINAL_BUDGET_THRESHOLD:
                     # 跳过此优先级组
@@ -202,10 +224,7 @@ class Runner:
                 return None  # 未知协议，跳过预检
 
             if resp.success:
-                # 预检成功，记录 token 消耗
-                if resp.usage:
-                    with self._budget_lock:
-                        self._tokens_used += resp.usage.total_tokens
+                # v3.0.1: 预检消耗由客户端预算计数器统一计量，无需手工记账
                 return None
             else:
                 # 预检失败
@@ -288,11 +307,25 @@ class Runner:
     # v2.7: 辅助方法
     # ============================================================
 
+    def _budget_used(self) -> int:
+        """当前已消耗预算 = 客户端实际计量（预算口径）+ 运行中检测器的预估占用。
+
+        需在 self._budget_lock（RLock，可重入）内调用或自行加锁。
+        """
+        getter = getattr(self.client, "get_budget_tokens", None)
+        actual = getter() if callable(getter) else 0
+        return actual + self._reserved_tokens
+
+    def _budget_used_safe(self) -> int:
+        with self._budget_lock:
+            return self._budget_used()
+
     def _budget_remaining_pct(self) -> float:
         """计算预算剩余百分比"""
         if self._token_budget <= 0:
             return 0.0
-        return max(0.0, (self._token_budget - self._tokens_used) / self._token_budget)
+        used = self._budget_used_safe()
+        return max(0.0, (self._token_budget - used) / self._token_budget)
 
     def _skip_detectors(self, detectors: list[ActiveDetector], reason: str) -> list[CheckResultV2]:
         """生成跳过的检测结果"""
@@ -343,23 +376,27 @@ class Runner:
     # ============================================================
 
     def _run_active(self, detector: ActiveDetector) -> CheckResultV2:
-        """执行单个 ActiveDetector（线程安全，预算预分配）
+        """执行单个 ActiveDetector（线程安全，预算预估占用）
 
-        预算追踪全部在本方法内完成：预扣 -> 执行 -> 修正为实际消耗。
+        v3.0.1: 预算记账 = 客户端实际计量（剔除缓存读取）+ 运行中检测器的
+        预估占用。检测器完成后仅释放占用，实际消耗由客户端 _record_usage
+        统一入账——不再使用检测器自报的 cost_tokens（可能含中转站上报的
+        巨额缓存读取，且各检测器口径不一）。
         """
         with self._budget_lock:
-            if self._tokens_used + detector.estimated_tokens > self._token_budget:
+            used = self._budget_used()
+            if used + detector.estimated_tokens > self._token_budget:
                 return CheckResultV2(
                     name=detector.name,
                     category=detector.category,
                     score=0,
                     weight=detector.weight,
                     status="skip",
-                    details=f"Token 预算耗尽（已用 {self._tokens_used}/{self._token_budget}），跳过检测。",
+                    details=f"Token 预算耗尽（已用 {used}/{self._token_budget}，含进行中检测的预估占用），跳过检测。",
                 )
-            # 预扣 estimated_tokens
-            self._tokens_used += detector.estimated_tokens
-            remaining = self._token_budget - self._tokens_used
+            # 预估占用
+            self._reserved_tokens += detector.estimated_tokens
+            remaining = self._token_budget - used - detector.estimated_tokens
 
         # 注入当前剩余预算
         detector.budget_limit = max(0, remaining)
@@ -370,8 +407,6 @@ class Runner:
         try:
             result = detector.run(wrapped_client)
         except Exception as e:
-            with self._budget_lock:
-                self._tokens_used -= detector.estimated_tokens
             return CheckResultV2(
                 name=detector.name,
                 category=detector.category,
@@ -380,11 +415,10 @@ class Runner:
                 status="error",
                 details=f"执行异常: {e}",
             )
-
-        # 正常完成：退回预扣，计入实际消耗
-        with self._budget_lock:
-            self._tokens_used -= detector.estimated_tokens
-            self._tokens_used += result.cost_tokens
+        finally:
+            # 无论成功/失败，释放预估占用（实际消耗已在客户端计量）
+            with self._budget_lock:
+                self._reserved_tokens -= detector.estimated_tokens
 
         return result
 

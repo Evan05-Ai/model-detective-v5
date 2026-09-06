@@ -101,6 +101,25 @@ class OpenAIClient(BaseProtocolClient):
 
         return None
 
+    @staticmethod
+    def _parse_usage(raw_usage: dict) -> "TokenUsage":
+        """v3.0.1: 统一解析 OpenAI usage，预算口径剔除缓存 token。
+
+        OpenAI 的 usage.total_tokens 包含 cached prompt tokens，
+        缓存读取计价约 10%，不应按全价计入检测预算。
+        """
+        raw_usage = raw_usage or {}
+        ptd = raw_usage.get("prompt_tokens_details") or {}
+        cached = ptd.get("cached_tokens", 0) or 0
+        total = raw_usage.get("total_tokens", 0)
+        return TokenUsage(
+            prompt_tokens=raw_usage.get("prompt_tokens", 0),
+            completion_tokens=raw_usage.get("completion_tokens", 0),
+            total_tokens=total,
+            cached_tokens=cached,
+            budget_tokens=max(0, total - cached),
+        )
+
     def chat(
         self,
         messages: list,
@@ -151,12 +170,7 @@ class OpenAIClient(BaseProtocolClient):
                             f"响应不是有效 JSON: {resp.text[:200]}"
                         )
 
-                usage_data = data.get("usage", {})
-                usage = TokenUsage(
-                    prompt_tokens=usage_data.get("prompt_tokens", 0),
-                    completion_tokens=usage_data.get("completion_tokens", 0),
-                    total_tokens=usage_data.get("total_tokens", 0),
-                )
+                usage = self._parse_usage(data.get("usage", {}))
                 self._record_usage(usage)
 
                 choice = data.get("choices", [{}])[0]
@@ -180,12 +194,7 @@ class OpenAIClient(BaseProtocolClient):
                 resolved_data = self._try_resolve_chat_url(payload, detector_name)
                 if resolved_data is not None:
                     data = resolved_data
-                    usage_data = data.get("usage", {})
-                    usage = TokenUsage(
-                        prompt_tokens=usage_data.get("prompt_tokens", 0),
-                        completion_tokens=usage_data.get("completion_tokens", 0),
-                        total_tokens=usage_data.get("total_tokens", 0),
-                    )
+                    usage = self._parse_usage(data.get("usage", {}))
                     self._record_usage(usage)
 
                     choice = data.get("choices", [{}])[0]
@@ -258,11 +267,7 @@ class OpenAIClient(BaseProtocolClient):
 
             usage = None
             if stream_result.usage:
-                usage = TokenUsage(
-                    prompt_tokens=stream_result.usage.get("prompt_tokens", 0),
-                    completion_tokens=stream_result.usage.get("completion_tokens", 0),
-                    total_tokens=stream_result.usage.get("total_tokens", 0),
-                )
+                usage = self._parse_usage(stream_result.usage)
             self._record_usage(usage)
 
             return ProtocolResponse(

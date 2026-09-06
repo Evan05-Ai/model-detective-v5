@@ -1,11 +1,55 @@
 # Model Detective — 项目记忆文件
 
-> 最后更新: 2026-09-06 (UTC+8)
-> 当前版本: v3.0.0 后端（惊艳升级：P1×3 修复 + P2×4 + 白写功能启用 + 死代码清理）+ Cosmic Galaxy v5.1 前端（资产 COSMIC_V300_20260906）
+> 最后更新: 2026-09-07 (UTC+8)
+> 当前版本: v3.0.1 后端（预算口径修复）+ Cosmic Galaxy v5.1 前端（资产 COSMIC_V300_20260906）
 > 部署状态: Cloudflare Tunnel ✅ (detect.model-detective.online，隧道 model-detective-v2)
 > 技术栈: Python Flask + Vanilla JS + HTML/CSS
 > GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
-> 测试基线: pytest 103/103（含 tests/test_core/test_scoring_v3.py 新增 25 项）
+> 测试基线: pytest 111/111（v3.0.0 新增 25 项 + v3.0.1 新增 8 项）
+
+---
+
+## 2026-09-07 v3.0.1 预算耗尽 Bug 修复（重要，用户线上实测发现）
+
+### 现象（用户截图）
+重启服务后检测某 Kiro 链路中转站（claude-opus-5），13 项检测器 10 项 SKIP：
+- thinking_signature 在"已用 96363/100000"被跳过，其余在"已用 239583/100000"
+- 但 integrity 被动观察显示**总共只有 2 次请求**——2~3 个请求就"烧掉"24 万 token
+
+### 根因
+Kiro/Bedrock 类中转站上游系统提示极大且走缓存，每次响应上报数万 `cache_read_input_tokens`。旧代码两处叠加：
+1. Anthropic 客户端把 cache_read **按全价**计入 `total_tokens`
+2. Runner 预算用检测器自报的 cost_tokens（= total_tokens）回填扣减
+
+缓存读取实际计价仅 ~10%，却按全价占预算 → 2-3 个请求耗尽 100k 预算 → 10/13 检测器跳过 → 报告报废。
+
+### 修复（预算口径下沉到客户端层，检测器零改动）
+1. **TokenUsage 新增 `budget_tokens` 字段 + `effective_budget_tokens` 回退属性**（base_client.py）：None 时回退 total_tokens，向后兼容所有既有构造点
+2. **Anthropic 客户端**（3 处构造）：`budget_tokens = input + output + cache_creation`（剔除 cache_read）
+3. **OpenAI 客户端**（3 处构造 + 新增 `_parse_usage` 统一解析）：解析 `prompt_tokens_details.cached_tokens`，`budget_tokens = total - cached`（OpenAI 的 total_tokens 含缓存 token）
+4. **Runner 记账模型重构**：
+   - 旧模型：预扣 estimate → 完成后退回并回填自报 cost_tokens（口径不一、含缓存全价）
+   - 新模型：实际消耗由 `BaseProtocolClient.get_budget_tokens()` 计数器统一计量（`_record_usage` 入账），运行中检测器只贡献预估占用（`_reserved_tokens`），完成即释放
+   - 预检（preflight）消耗由客户端计数器自然覆盖，删除手工记账
+   - 跳过消息显示"已用 X（含进行中检测的预估占用）"
+5. **3 倍费用保护硬止损**（组级）：预算口径用量 > 3×预算时中止剩余检测组，消息明确"中转站上报用量异常"。场景：单个检测器内部多次请求累积爆预算（如 identity 4 策略 × 90k）
+6. **费用估算改用预算口径**：get_cost_summary 的 estimated_cost_usd 按 budget_tokens 计算（缓存读取 1 折计价，不再把缓存密集中转站的费用高估一个数量级）；报告头部 "Tokens: N" 仍显示上报总量（与中转站面板对账一致）
+
+### 兼容性设计
+- MockClient（测试）无 `get_budget_tokens` 方法 → Runner 鸭子类型回退（actual=0，仅按预估占用 pacing），既有 103 项测试零改动全过
+- Gemini 客户端不设 budget_tokens → 自动回退 total_tokens
+- 检测器层 58 处 cost_tokens 赋值零改动
+
+### 测试（tests/test_core/test_budget_v3.py，8 项）
+- 核心回归：cache_read 45k/请求场景下 4 检测器全部运行（旧代码 2 个后全 SKIP）
+- Anthropic 计数器剔除 cache_read；OpenAI _parse_usage 剔除 cached_tokens；TokenUsage 回退
+- 纯虚增（120k/请求无缓存字段）→ 单项检查拦截 + 消息含真实用量
+- 单检测器 4 请求×90k 累积 361k → 组级"费用保护"止损触发
+- 预估占用完成后清零；预算真耗尽时消息完整
+
+### 教训（防回归）
+- **中转站上报的 usage 是它的计费口径，不是我们的边际成本**——检测预算应按"我方请求的边际消耗"记账，缓存读取/中转站注入的系统提示开销不能按全价占用预算
+- 用户实测环境（真实 Kiro 中转站）才能暴露这类问题，单元测试里 MockClient 全部 usage=None 是盲区
 
 ---
 

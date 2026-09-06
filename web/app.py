@@ -1081,7 +1081,7 @@ def evaluation():
 
 @app.get("/health")
 def health():
-    return jsonify({"ok": True, "version": "3.0.0-web"})
+    return jsonify({"ok": True, "version": "3.0.1-web"})
 
 # ── Entry point ──────────────────────────────────────────────
 

@@ -20,6 +20,18 @@ class TokenUsage:
     # 缓存计费字段（v2.2 新增，Anthropic API）
     cache_creation_input_tokens: int = 0      # 创建缓存消耗的 input tokens
     cache_read_input_tokens: int = 0          # 读取缓存消耗的 input tokens（打折计费）
+    # v3.0.1 新增（OpenAI 格式）
+    cached_tokens: int = 0                    # usage.prompt_tokens_details.cached_tokens
+    # v3.0.1: 预算扣减口径（剔除缓存读取）。None 时回退 total_tokens。
+    # 背景：Kiro/Bedrock 类中转站每次响应上报数万 cache_read tokens（上游系统提示
+    # 走缓存），缓存读取实际计价仅 ~10%，按全价计入预算会让 2-3 个请求就"耗尽"
+    # 预算，导致 10/13 检测器被跳过。
+    budget_tokens: Optional[int] = None
+
+    @property
+    def effective_budget_tokens(self) -> int:
+        """预算扣减用量：优先用 budget_tokens，未设置时回退 total_tokens"""
+        return self.total_tokens if self.budget_tokens is None else self.budget_tokens
 
 
 @dataclass
@@ -52,6 +64,7 @@ class BaseProtocolClient:
         self._local = threading.local()
         self._lock = threading.Lock()
         self._total_tokens = 0
+        self._budget_tokens_count = 0   # v3.0.1: 预算口径累计（剔除缓存读取）
         self._total_requests = 0
 
     @property
@@ -92,11 +105,22 @@ class BaseProtocolClient:
             self._total_requests += 1
             if usage:
                 self._total_tokens += usage.total_tokens
+                self._budget_tokens_count += usage.effective_budget_tokens
+
+    def get_budget_tokens(self) -> int:
+        """获取预算口径的累计 token 消耗（线程安全，供 Runner 预算扣减使用）"""
+        with self._lock:
+            return self._budget_tokens_count
 
     def get_cost_summary(self) -> dict:
-        """获取消耗摘要（线程安全）—— 按模型官方定价估算"""
+        """获取消耗摘要（线程安全）—— 按模型官方定价估算
+
+        v3.0.1: 费用估算改用预算口径（剔除缓存读取，其计价仅 ~10%），
+        避免缓存密集型中转站的费用被高估一个数量级。
+        """
         with self._lock:
             tokens = self._total_tokens
+            budget_tokens = self._budget_tokens_count
             requests_count = self._total_requests
         try:
             from src.utils.price_db import get_official_price
@@ -104,11 +128,12 @@ class BaseProtocolClient:
             input_price = price.get("input") or 2.5
             output_price = price.get("output") or 10.0
             # 粗略按 60% input / 40% output 估算
-            estimated = tokens * (input_price * 0.6 + output_price * 0.4) / 1_000_000
+            estimated = budget_tokens * (input_price * 0.6 + output_price * 0.4) / 1_000_000
         except Exception:
-            estimated = tokens * 2.5 / 1_000_000
+            estimated = budget_tokens * 2.5 / 1_000_000
         return {
             "total_tokens": tokens,
+            "budget_tokens": budget_tokens,
             "total_requests": requests_count,
             "estimated_cost_usd": estimated,
         }

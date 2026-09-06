@@ -161,15 +161,19 @@ class AnthropicClient(BaseProtocolClient):
                         )
 
                 usage_data = data.get("usage", {})
+                input_t = usage_data.get("input_tokens", 0)
+                output_t = usage_data.get("output_tokens", 0)
+                cache_creation_t = usage_data.get("cache_creation_input_tokens", 0)
+                cache_read_t = usage_data.get("cache_read_input_tokens", 0)
                 usage = TokenUsage(
-                    prompt_tokens=usage_data.get("input_tokens", 0),
-                    completion_tokens=usage_data.get("output_tokens", 0),
-                    total_tokens=(usage_data.get("input_tokens", 0)
-                                  + usage_data.get("output_tokens", 0)
-                                  + usage_data.get("cache_creation_input_tokens", 0)
-                                  + usage_data.get("cache_read_input_tokens", 0)),
-                    cache_creation_input_tokens=usage_data.get("cache_creation_input_tokens", 0),
-                    cache_read_input_tokens=usage_data.get("cache_read_input_tokens", 0),
+                    prompt_tokens=input_t,
+                    completion_tokens=output_t,
+                    total_tokens=(input_t + output_t + cache_creation_t + cache_read_t),
+                    cache_creation_input_tokens=cache_creation_t,
+                    cache_read_input_tokens=cache_read_t,
+                    # v3.0.1: 预算口径剔除缓存读取（计价 ~10%，Kiro 类中转站
+                    # 每次响应上报数万 cache_read，按全价计入会冲爆检测预算）
+                    budget_tokens=input_t + output_t + cache_creation_t,
                 )
                 self._record_usage(usage)
 
@@ -204,15 +208,17 @@ class AnthropicClient(BaseProtocolClient):
                 if resolved_data is not None:
                     data = resolved_data
                     usage_data = data.get("usage", {})
+                    input_t = usage_data.get("input_tokens", 0)
+                    output_t = usage_data.get("output_tokens", 0)
+                    cache_creation_t = usage_data.get("cache_creation_input_tokens", 0)
+                    cache_read_t = usage_data.get("cache_read_input_tokens", 0)
                     usage = TokenUsage(
-                        prompt_tokens=usage_data.get("input_tokens", 0),
-                        completion_tokens=usage_data.get("output_tokens", 0),
-                        total_tokens=(usage_data.get("input_tokens", 0)
-                                      + usage_data.get("output_tokens", 0)
-                                      + usage_data.get("cache_creation_input_tokens", 0)
-                                      + usage_data.get("cache_read_input_tokens", 0)),
-                        cache_creation_input_tokens=usage_data.get("cache_creation_input_tokens", 0),
-                        cache_read_input_tokens=usage_data.get("cache_read_input_tokens", 0),
+                        prompt_tokens=input_t,
+                        completion_tokens=output_t,
+                        total_tokens=(input_t + output_t + cache_creation_t + cache_read_t),
+                        cache_creation_input_tokens=cache_creation_t,
+                        cache_read_input_tokens=cache_read_t,
+                        budget_tokens=input_t + output_t + cache_creation_t,
                     )
                     self._record_usage(usage)
 
@@ -310,15 +316,18 @@ class AnthropicClient(BaseProtocolClient):
 
             usage = None
             if stream_result.usage:
+                su = stream_result.usage
+                s_in = su.get("input_tokens", 0)
+                s_out = su.get("output_tokens", 0)
+                s_cc = su.get("cache_creation_input_tokens", 0)
+                s_cr = su.get("cache_read_input_tokens", 0)
                 usage = TokenUsage(
-                    prompt_tokens=stream_result.usage.get("input_tokens", 0),
-                    completion_tokens=stream_result.usage.get("output_tokens", 0),
-                    total_tokens=(stream_result.usage.get("input_tokens", 0)
-                                  + stream_result.usage.get("output_tokens", 0)
-                                  + stream_result.usage.get("cache_creation_input_tokens", 0)
-                                  + stream_result.usage.get("cache_read_input_tokens", 0)),
-                    cache_creation_input_tokens=stream_result.usage.get("cache_creation_input_tokens", 0),
-                    cache_read_input_tokens=stream_result.usage.get("cache_read_input_tokens", 0),
+                    prompt_tokens=s_in,
+                    completion_tokens=s_out,
+                    total_tokens=(s_in + s_out + s_cc + s_cr),
+                    cache_creation_input_tokens=s_cc,
+                    cache_read_input_tokens=s_cr,
+                    budget_tokens=s_in + s_out + s_cc,
                 )
             self._record_usage(usage)
 

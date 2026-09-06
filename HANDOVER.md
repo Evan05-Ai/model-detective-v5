@@ -1,17 +1,24 @@
 ﻿﻿﻿# Model Detective — 交接文档 v6.3
 
-> 创建时间: 2026-09-01 (UTC+8) · 最后更新: 2026-09-06 (UTC+8)
+> 创建时间: 2026-09-01 (UTC+8) · 最后更新: 2026-09-07 (UTC+8)
 > 项目路径: D:\Ai工作\model-detective
 > GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
-> 当前版本: 后端 v3.0.0 + 前端 Cosmic Galaxy v5.1（资产版本 COSMIC_V300_20260906）
+> 当前版本: 后端 v3.0.1 + 前端 Cosmic Galaxy v5.1（资产版本 COSMIC_V300_20260906）
 > 部署: Cloudflare Tunnel → https://detect.model-detective.online
-> 最新基线: pytest 103/103 全绿；v3.0.0 惊艳升级已提交（服务待下次重启生效）
+> 最新基线: pytest 111/111 全绿；v3.0.1 预算口径修复已提交（服务待下次重启生效）
 
 ---
 
 ## 一、当前状态总览
 
-### 1.0 v3.0.0 惊艳升级（2026-09-06，本次会话）
+### 1.0a v3.0.1 预算耗尽修复（2026-09-07，用户线上实测发现）
+
+**现象**：Kiro 链路中转站检测时 10/13 检测器 SKIP，"已用 239583/100000"，但实际仅发出 2~3 个请求。
+**根因**：中转站每次响应上报数万 `cache_read_input_tokens`（上游系统提示走缓存），旧预算按全价计入 → 2~3 请求冲爆 100k 预算。
+**修复**：预算口径下沉客户端层——`TokenUsage.budget_tokens`（Anthropic 剔除 cache_read；OpenAI 剔除 cached_tokens）；Runner 改为"客户端预算计数器 + 预估占用"记账；费用估算按预算口径；新增 3 倍费用保护硬止损。检测器层 58 处 cost_tokens 零改动。
+**测试**：test_budget_v3.py 8 项（含截图场景复现），总 111/111。详见 MEMORY.md 同名章节。
+
+### 1.0 v3.0.0 惊艳升级（2026-09-06）
 
 全量代码审查后落地的修复+升级，详见 MEMORY.md 同名章节：
 
@@ -322,11 +329,12 @@ curl http://localhost:5000/api/providers
 3. 重启服务需管理员权限：右键 restart_service.bat 以管理员身份运行；不要 taskkill 服务进程（nssm 配置了自动重启）
 4. 本机 curl 访问公网（含 github.com）会被 v2rayN/mitmproxy 代理层间歇吞包（约 10 秒黑洞），验证站点/仓库是否正常必须用外部视角（WebFetch、手机流量）
 5. 任何 API Key 不准写进 git 跟踪的文件（放 config.local.json 或环境变量）
-6. 改动代码后运行 .venv\Scripts\python.exe -m pytest tests/（当前 103 用例全部通过）
+6. 改动代码后运行 .venv\Scripts\python.exe -m pytest tests/（当前 111 用例全部通过）
 7. 修改 start 脚本时注意：cloudflared 的 --config 必须放在 tunnel 之后、run 之前
 8. 所有出站 HTTP 请求默认 allow_redirects=False（v3.0 SSRF 防护，新代码勿改回）
+9. 检测预算口径：缓存读取（cache_read/cached_tokens）不占用 Runner 预算（v3.0.1），新增检测器勿再用 usage.total_tokens 做预算判断
 
-当前基线：后端 v3.0.0 + 前端 Cosmic Galaxy v5.1（资产 COSMIC_V300_20260906）；部署 https://detect.model-detective.online；pytest 103/103；无遗留安全待办（DNS rebinding TOCTOU 为已知残留限制）。
+当前基线：后端 v3.0.1 + 前端 Cosmic Galaxy v5.1（资产 COSMIC_V300_20260906）；部署 https://detect.model-detective.online；pytest 111/111；无遗留安全待办（DNS rebinding TOCTOU 为已知残留限制）。
 ```
 
 ---
