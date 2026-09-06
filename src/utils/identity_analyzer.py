@@ -54,7 +54,11 @@ IDENTITY_PATTERNS: dict[str, dict] = {
     },
     "opensource": {
         "keywords": ["qwen", "deepseek", "llama", "mistral",
-                      "yi-", "yi-01", "zhipu", "chatglm"],
+                      "yi-", "yi-01", "zhipu", "chatglm",
+                      # v3.0: 补齐国产/开源模型关键词——此前 GLM/Kimi 等假冒
+                      # 只能落到"回答模糊"(45分)，无法触发"身份不匹配"(20分)
+                      "glm", "kimi", "moonshot", "minimax",
+                      "doubao", "ernie", "hunyuan", "baichuan", "internlm"],
         "versions": [],
     },
 }
@@ -315,13 +319,17 @@ def _identity_matches_claimed(identity: str, claimed_model: str) -> bool:
     if identity == "claude":
         return any(kw in claimed_lower for kw in ["claude", "anthropic"])
     elif identity == "gpt":
-        return any(kw in claimed_lower for kw in ["gpt", "openai"])
+        # v3.0: 补 o1/o3/o4 系列——此前 "o3-mini" 这类不含 gpt/openai 字样的
+        # 声称模型会被误判"身份不匹配"
+        return any(kw in claimed_lower for kw in ["gpt", "openai", "o1", "o3", "o4", "chatgpt"])
     elif identity == "gemini":
-        return any(kw in claimed_lower for kw in ["gemini", "google"])
+        return any(kw in claimed_lower for kw in ["gemini", "google", "gemma"])
     elif identity == "kiro":
         return any(kw in claimed_lower for kw in ["kiro", "aws", "bedrock"])
     elif identity == "opensource":
-        return any(kw in claimed_lower for kw in ["qwen", "deepseek", "llama", "mistral", "yi-"])
+        return any(kw in claimed_lower for kw in ["qwen", "deepseek", "llama", "mistral", "yi-",
+                                                   "glm", "kimi", "moonshot", "minimax",
+                                                   "doubao", "ernie", "hunyuan"])
     return False
 
 

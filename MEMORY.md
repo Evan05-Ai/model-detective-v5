@@ -1,10 +1,73 @@
 # Model Detective — 项目记忆文件
 
-> 最后更新: 2026-09-03 (UTC+8)
-> 当前版本: v2.9.1 后端（自检审查修复）+ Cosmic Galaxy v5.1 前端
+> 最后更新: 2026-09-06 (UTC+8)
+> 当前版本: v3.0.0 后端（惊艳升级：P1×3 修复 + P2×4 + 白写功能启用 + 死代码清理）+ Cosmic Galaxy v5.1 前端（资产 COSMIC_V300_20260906）
 > 部署状态: Cloudflare Tunnel ✅ (detect.model-detective.online，隧道 model-detective-v2)
 > 技术栈: Python Flask + Vanilla JS + HTML/CSS
-> GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master，远端顶端 ef371e1 全部已推送)
+> GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
+> 测试基线: pytest 103/103（含 tests/test_core/test_scoring_v3.py 新增 25 项）
+
+---
+
+## 2026-09-06 v3.0.0 惊艳升级（重要）
+
+### 背景
+用户要求按全量代码审查报告执行"升级到惊艳"。审查发现 3 个 P1 bug、4 个 P2 bug、2 个白写功能、一批死代码。全部落地，一个工作日内完成。
+
+### P1 修复（3 项）
+
+**1. 测评维度选择被 difficulty 静默覆盖**（web/app.py）
+- 旧逻辑：quick/standard 难度直接用 QUICK_QUESTIONS/STANDARD_QUESTIONS 整体替换题集，用户勾选的 dimensions 被丢弃
+- 修复：选题逻辑抽取为 `web/app.py::_select_eval_questions(difficulty, dimensions)`（可独立测试）；quick/standard 题集按勾选维度过滤；未勾选=全部维度
+- 验证：POST /api/evaluate {"difficulty":"quick","dimensions":["technical"]} → total_questions=4（旧代码 20）
+
+**2. option_match 评分近乎自动给分**（src/evaluation/eval_engine.py::score_answer）
+- 旧逻辑：`any(opt in answer for opt in ["a","b","c","d"])` 子串匹配——答案含字母 a/b/c/d（如 "AI"）即得 70%；正确性判断 "B" 同样子串误中
+- 修复：新增 `_match_keyword()`（拉丁关键词词边界 `(?<![a-z0-9])kw(?![a-z0-9])`，中文仍子串）与 `_extract_option_letters()`（识别 `A)` `选项B` `答案是C` 等明确选项表达）
+- 新评分：明确选对→100%；明确选错→10%（反关键词）；复述全部选项→30%；对比表述→80%；普通字母噪音→0%
+- keyword_match/exact_match 同步改词边界（"max" 不再误中 "maximum"）；code_check 从"含 3 个通用词给 80 分"改为结构要素（定义+控制流，词边界匹配）+ 题目要素命中率组合（base 0.2/0.5/0.8 + kw_ratio×0.2）
+
+**3. SSRF 重定向绕过**（全出站请求）
+- 旧缺口：SSRF 校验只覆盖初始 URL，requests 默认跟随重定向——公网部署下攻击者可提交自控 URL → 302 跳内网（169.254.169.254 等）读响应
+- 修复：`http_utils.request_with_retry` 默认 `allow_redirects=False`（覆盖全部检测器请求）；OpenAI/Anthropic/Gemini 三个客户端的流式请求、`protocol_resolver.py` 4 处探测、`web/app.py` /api/probe 逐点补齐
+- 已知残留：DNS rebinding TOCTOU（校验后二次解析）未修——需 pinned-IP 连接，性价比低，文档化
+
+### P2 修复（4 项）
+
+1. **Anthropic `_try_resolve_url` 丢浏览器头**：改走 `self.session`（自带 BROWSER_HEADERS 过 Cloudflare WAF）+ `request_with_retry` 重试。此前裸 requests.post，WAF 站点 URL 自动发现回退路径必 403
+2. **Standard 题集 36→40 题**：STANDARD_QUESTIONS 的 boundary 从 [:4] 改 [:8]，与 UI "标准版 (40题)" 文案一致
+3. **integrity 空响应死逻辑**：旧代码 contents 只收集非空内容，`sum(1 for c in contents if not c)` 恒 0；修复为记录失败性空响应，但排除 thinking_signature（thinking-only 响应无文本块属正常，避免每次检测误扣 15 分）
+4. **thinking_signature 中转特征分级**：PROXY_HEADER_MARKERS 拆为 STRONG（x-oneapi-request-id/x-new-api/x-oneapi，任一命中判中转 70 分）与 WEAK（cf-ray/x-vercel/x-ratelimit 等，需 ≥2 同时出现）；单一 cf-ray（Cloudflare CDN 头，正规站普遍有）不再把直连 100 分误降 70。标记匹配改前缀式（x-ratelimit 可命中 x-ratelimit-limit——旧代码精确 key 匹配实际从未命中过）
+
+### 升级项（6 项）
+
+1. **system_fingerprint 真伪信号**（openai/model_consistency.py）：多次请求 system_fingerprint 不一致 → MINOR +5 分"后端多部署负载均衡"；一致且存在 → OK issue。缺失（中转站不透传）静默跳过
+2. **identity_analyzer 关键词补充**：opensource 增 glm/kimi/moonshot/minimax/doubao/ernie/hunyuan/baichuan/internlm——此前假冒成这些模型只得 45 分"模糊"而非 20 分 CRITICAL"身份不匹配"；`_identity_matches_claimed` gpt 分支补 o1/o3/o4（"o3-mini" 不再误判）、gemini 分支补 gemma
+3. **cached_tokens 误报前置条件**（openai/billing_integrity.py）：reported_input≥1024（OpenAI 自动缓存门槛）时 cached_tokens>0 判正常缓存命中；短 prompt 出现才 -20 MAJOR
+4. **置信度系统启用**（v2.6 白写功能）：`_serialize_report` 输出每项 confidence/confidence_reason + 报告级 confidence_stats（calculate_confidence_stats 首次接入）；app.js renderRow 显示"置信度 N%"（悬停看原因，skip 项不显示）
+5. **PROVIDERS 单一来源**：app.js/evaluation.js 硬编码列表删除，改 fetch /api/providers（失败仅下拉为空不影响主流程）
+6. **测评并发闸门**：`_EVAL_SEMA=2`（检测已有 4 并发闸门，测评此前无限制）+ prefers-reduced-motion（style.css/evaluation.css 全局降动效 + starfield.js/evaluation.js 守卫跳过星空渲染）
+
+### 死代码清理
+- index.html 隐藏的 section-evaluation（~200 行死 HTML，7.7KB）
+- app.js 评测死代码 ~800 行（29KB）：与 evaluation.js 平行的第二实现，已出现不同步土壤
+- src/protocols/anthropic/detectors/consistency_v27.py（零引用）
+- openai/client.py `_try_resolve_chat_url` 重复候选 URL（base 已 /v1 结尾时第 1、2 项相同）
+- base_client.py TokenUsage.cost_usd 死属性（零引用）
+
+### 工程决策记录（防翻案）
+- **不执行模型生成的代码**（code_check 沙箱执行被否决）：中转站返回的代码是不可信第三方输入，nssm 服务账户下无隔离执行 = 任意代码执行风险，与 SSRF 修复精神矛盾。用结构+要素静态评分替代
+- **不换 waitress/gunicorn**：SSE 流式行为差异无法在本机充分验证（v2rayN 代理干扰外网验证），当前流量低，换生产服务器组件验证不了就上线是赌博。列为后续独立变更
+- **v1 CLI（detect.py/checks.py/api_client.py）不改动**：本地开发者工具，不在 SSRF 攻击面内
+
+### 验证
+- pytest 103/103 全绿（新增 test_scoring_v3.py 25 项：词边界/选项提取/反关键词/选题维度/题库计数/指纹/特征分级/空响应/重定向禁用/SSRF 校验回归）
+- node --check 三个 JS 文件语法通过
+- 本地烟测（PORT=5099）：/ 200、/evaluation 200、/health v3.0.0、/api/providers 正常、维度选题 4/40 题、SSRF 拦截内网 400
+- 静态资产版本 bump 为 COSMIC_V300_20260906（防浏览器缓存旧 JS/CSS）
+
+### 生效条件
+**需重启 Flask 服务才在线上生效**：右键 restart_service.bat 以管理员身份运行（本次会话无管理员权限未重启）。
 
 ---
 

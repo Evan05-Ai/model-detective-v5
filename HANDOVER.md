@@ -1,15 +1,40 @@
-﻿﻿﻿# Model Detective — 交接文档 v6.2
+﻿﻿﻿# Model Detective — 交接文档 v6.3
 
-> 创建时间: 2026-09-01 (UTC+8) · 最后更新: 2026-09-03 (UTC+8)
+> 创建时间: 2026-09-01 (UTC+8) · 最后更新: 2026-09-06 (UTC+8)
 > 项目路径: D:\Ai工作\model-detective
 > GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
-> 当前版本: 后端 v2.9.1 + 前端 Cosmic Galaxy v5.1
+> 当前版本: 后端 v3.0.0 + 前端 Cosmic Galaxy v5.1（资产版本 COSMIC_V300_20260906）
 > 部署: Cloudflare Tunnel → https://detect.model-detective.online
-> 最新 commit: ef371e1 fix: 自检修正（已推送，本地与 origin/master 同步）
+> 最新基线: pytest 103/103 全绿；v3.0.0 惊艳升级已提交（服务待下次重启生效）
 
 ---
 
 ## 一、当前状态总览
+
+### 1.0 v3.0.0 惊艳升级（2026-09-06，本次会话）
+
+全量代码审查后落地的修复+升级，详见 MEMORY.md 同名章节：
+
+| 类别 | 内容 |
+|------|------|
+| P1 测评 | 维度选择不再被 difficulty 静默覆盖（`_select_eval_questions` 抽取为可测函数） |
+| P1 测评 | option_match 评分重写：明确选项表达 + 反关键词（选错 10%、复述 30%、普通字母噪音 0 分） |
+| P1 安全 | 全出站请求 `allow_redirects=False`，堵 SSRF 重定向绕过（request_with_retry 默认 + 3 个客户端流式 + resolver/probe 探测） |
+| P2 | Anthropic `_try_resolve_url` 改走 session（浏览器头过 WAF）+ request_with_retry |
+| P2 | Standard 题集 36→40 题（boundary 8 题），与 UI 文案一致 |
+| P2 | integrity 空响应死逻辑修复（排除 thinking-only 误报） |
+| P2 | thinking_signature 中转特征强/弱分级（cf-ray 单一 CDN 头不再误判；标记改前缀匹配） |
+| 升级 | model_consistency 接入 system_fingerprint 一致性检查（OpenAI 官方链路真伪信号） |
+| 升级 | identity_analyzer 补 GLM/Kimi/豆包等国产模型关键词 + o 系列 claimed 匹配 |
+| 升级 | cached_tokens 审计加 prompt≥1024 前置条件（OpenAI 自动缓存门槛，消除误报） |
+| 升级 | 置信度系统接入 API 序列化 + 前端展示（v2.6 白写功能启用） |
+| 升级 | PROVIDERS 前端统一从 /api/providers 拉取（消除三处硬编码） |
+| 升级 | 测评并发闸门 `_EVAL_SEMA=2` |
+| 升级 | prefers-reduced-motion 无障碍适配（两份 CSS + starfield.js + evaluation.js） |
+| 清理 | index.html 隐藏测评区（~200 行死 HTML）、app.js 评测死代码（~800 行）、consistency_v27.py 死文件、重复候选 URL、cost_usd 死属性 |
+| 测试 | 新增 tests/test_core/test_scoring_v3.py（25 项），总数 78→103 全绿 |
+
+**注意**：改动需重启 Flask 服务才在线上生效（右键 restart_service.bat 管理员运行）。DNS rebinding（TOCTOU 二次解析）为已知残留限制，文档化未修——修需 pinned-IP 连接，性价比低。
 
 ### 1.1 已完成的工作（2026-09-01 自检审查）
 
@@ -297,10 +322,11 @@ curl http://localhost:5000/api/providers
 3. 重启服务需管理员权限：右键 restart_service.bat 以管理员身份运行；不要 taskkill 服务进程（nssm 配置了自动重启）
 4. 本机 curl 访问公网（含 github.com）会被 v2rayN/mitmproxy 代理层间歇吞包（约 10 秒黑洞），验证站点/仓库是否正常必须用外部视角（WebFetch、手机流量）
 5. 任何 API Key 不准写进 git 跟踪的文件（放 config.local.json 或环境变量）
-6. 改动代码后运行 .venv\Scripts\python.exe -m pytest tests/（当前 78 用例全部通过）
+6. 改动代码后运行 .venv\Scripts\python.exe -m pytest tests/（当前 103 用例全部通过）
 7. 修改 start 脚本时注意：cloudflared 的 --config 必须放在 tunnel 之后、run 之前
+8. 所有出站 HTTP 请求默认 allow_redirects=False（v3.0 SSRF 防护，新代码勿改回）
 
-当前基线：后端 v2.9.1 + 前端 Cosmic Galaxy v5.1；部署 https://detect.model-detective.online；远端 origin/master = ef371e1 全部已推送；pytest 78/78；无遗留安全待办。
+当前基线：后端 v3.0.0 + 前端 Cosmic Galaxy v5.1（资产 COSMIC_V300_20260906）；部署 https://detect.model-detective.online；pytest 103/103；无遗留安全待办（DNS rebinding TOCTOU 为已知残留限制）。
 ```
 
 ---

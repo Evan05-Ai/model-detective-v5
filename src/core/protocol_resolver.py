@@ -112,7 +112,7 @@ class ProtocolResolver:
 
         for models_url, effective_base in url_candidates:
             try:
-                resp = requests.get(models_url, headers=headers, timeout=8)
+                resp = requests.get(models_url, headers=headers, timeout=8, allow_redirects=False)
                 if resp.status_code == 200:
                     # 验证是否为 JSON
                     try:
@@ -139,7 +139,7 @@ class ProtocolResolver:
         ]
         for chat_url, effective_base in chat_url_candidates:
             try:
-                resp = requests.post(chat_url, json=chat_payload, headers=headers, timeout=8)
+                resp = requests.post(chat_url, json=chat_payload, headers=headers, timeout=8, allow_redirects=False)
                 if resp.status_code == 200:
                     try:
                         data = resp.json()
@@ -195,7 +195,7 @@ class ProtocolResolver:
 
         for url in url_candidates:
             try:
-                resp = requests.post(url, json=payload, headers=headers, timeout=15)
+                resp = requests.post(url, json=payload, headers=headers, timeout=15, allow_redirects=False)
 
                 if resp.status_code == 200:
                     # v2.4: 验证响应是否为 JSON（防止中转站返回 200 HTML）
@@ -253,7 +253,7 @@ class ProtocolResolver:
 
         for url in url_candidates:
             try:
-                resp = requests.post(url, json=payload, headers=BROWSER_HEADERS, timeout=15)
+                resp = requests.post(url, json=payload, headers=BROWSER_HEADERS, timeout=15, allow_redirects=False)
 
                 if resp.status_code == 200:
                     # v2.4: 验证响应是否为 JSON

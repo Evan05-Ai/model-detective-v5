@@ -170,6 +170,28 @@ class ModelConsistencyDetector(ActiveDetector):
                 detector_name=self.name,
             ))
 
+        # v3.0: system_fingerprint 一致性检查（OpenAI 官方链路的真伪信号）
+        # 官方 API 响应带 system_fingerprint，同一模型应稳定；中转站若透传，
+        # 不一致说明后端在多个不同部署间负载均衡。字段缺失（多数中转站不透传）则静默跳过。
+        fingerprints = []
+        for r in responses_raw:
+            sf = (getattr(r, "raw_response", None) or {}).get("system_fingerprint")
+            if sf:
+                fingerprints.append(str(sf))
+        if len(fingerprints) >= 2 and len(set(fingerprints)) > 1:
+            model_penalty += 5.0
+            model_issues.append(Issue(
+                level=IssueLevel.MINOR,
+                message=f"system_fingerprint 不一致: {sorted(set(fingerprints))}，后端可能在多个部署间负载均衡",
+                detector_name=self.name,
+            ))
+        elif fingerprints:
+            model_issues.append(Issue(
+                level=IssueLevel.OK,
+                message=f"system_fingerprint 一致: {fingerprints[0]}（官方链路特征）",
+                detector_name=self.name,
+            ))
+
         # 应用模型名修饰符
         if model_capped:
             final_score = min(final_score, model_cap)

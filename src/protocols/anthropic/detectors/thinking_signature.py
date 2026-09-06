@@ -11,16 +11,21 @@ from src.core.models import CheckResultV2, Issue, IssueLevel
 from ..config import WEIGHTS, CATEGORIES
 
 
-# 中转站特征响应头
-PROXY_HEADER_MARKERS = [
+# 中转站特征响应头（v3.0 分级判定，消除 CDN 头误判）
+# 强特征：OneAPI/NewAPI 等中转面板特有的头，出现即判定经中转
+STRONG_PROXY_HEADER_MARKERS = [
     "x-oneapi-request-id",
     "x-new-api",
     "x-oneapi",
+]
+# 弱特征：CDN/通用基础设施头。cf-ray 是 Cloudflare CDN 头，大量正规站点都有；
+# x-ratelimit 是通用限流头。单一弱特征不再判"经中转"，需 ≥2 个同时出现。
+WEAK_PROXY_HEADER_MARKERS = [
+    "cf-ray",          # Cloudflare CDN
+    "x-vercel",        # Vercel
+    "x-served-by",
     "x-forwarded-for",
     "x-real-ip",
-    "x-served-by",
-    "cf-ray",          # Cloudflare
-    "x-vercel",        # Vercel
     "x-ratelimit",     # 自定义限流
 ]
 
@@ -67,32 +72,42 @@ class ThinkingSignatureDetector(ActiveDetector):
         if signature:
             # 签名存在 - 检查是否经中转站转发
             # BUG-3 修复：大小写不敏感匹配
-            headers_lower = {k.lower(): v for k, v in headers.items()}
-            proxy_markers_found = []
-            for marker in PROXY_HEADER_MARKERS:
-                if marker in headers_lower:
-                    proxy_markers_found.append(marker)
+            # v3.0：强特征任一命中，或 ≥2 个弱特征同时出现才判"经中转"。
+            # 匹配采用前缀方式（x-ratelimit 可命中 x-ratelimit-limit 等变体）。
+            headers_lower = [k.lower() for k in headers.keys()]
+            strong_found = [m for m in STRONG_PROXY_HEADER_MARKERS
+                            if any(k == m or k.startswith(m) for k in headers_lower)]
+            weak_found = [m for m in WEAK_PROXY_HEADER_MARKERS
+                          if any(k == m or k.startswith(m) for k in headers_lower)]
 
-            if proxy_markers_found:
+            if strong_found or len(weak_found) >= 2:
                 # 签名有效但经中转站转发
+                markers_found = strong_found + weak_found[:3]
                 score = 70
                 confidence = 0.85  # 中高置信度：签名有效但可能经中转
                 confidence_reason = "签名验证有效，但检测到中转站特征头"
                 issues.append(Issue(
                     level=IssueLevel.MINOR,
-                    message=f"签名有效，但检测到中转站特征头: {proxy_markers_found[:3]}，疑似经代理商转发",
+                    message=f"签名有效，但检测到中转站特征头: {markers_found[:3]}，疑似经代理商转发",
                     detector_name=self.name,
                 ))
             else:
-                # 签名有效且无中转站特征
+                # 签名有效且无中转特征（单一 CDN 弱特征视为正常基础设施）
                 score = 100
                 confidence = 0.98  # 极高置信度：签名有效且无中转特征
                 confidence_reason = "签名验证有效，未检测到中转站特征"
-                issues.append(Issue(
-                    level=IssueLevel.OK,
-                    message="签名有效，未检测到中转站特征，疑似直连",
-                    detector_name=self.name,
-                ))
+                if weak_found:
+                    issues.append(Issue(
+                        level=IssueLevel.OK,
+                        message=f"签名有效。检测到 CDN/基础设施头（{weak_found[:2]}），属正常链路特征，不判为中转",
+                        detector_name=self.name,
+                    ))
+                else:
+                    issues.append(Issue(
+                        level=IssueLevel.OK,
+                        message="签名有效，未检测到中转站特征，疑似直连",
+                        detector_name=self.name,
+                    ))
         else:
             # 签名缺失
             if thinking_text:

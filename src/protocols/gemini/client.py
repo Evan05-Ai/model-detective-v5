@@ -123,6 +123,7 @@ class GeminiClient(BaseProtocolClient):
                 json=payload,
                 stream=True,
                 timeout=120,
+                allow_redirects=False,
             )
 
             if resp.status_code != 200:

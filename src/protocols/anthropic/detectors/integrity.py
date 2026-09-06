@@ -40,9 +40,14 @@ class IntegrityDetector(PassiveDetector):
             if m:
                 models_raw.add(m)
                 models_normalized.add(normalize_model_name(m))
-            c = resp.get("content", "")
+            c = (resp.get("content") or "").strip().lower()
             if c:
-                contents.append(c.strip().lower())
+                contents.append(c)
+            elif resp.get("success") and det_name != "thinking_signature":
+                # v3.0 修复：空响应死逻辑——此前 contents 只收集非空内容，
+                # "空响应扣分"检查永远不触发。现在记录失败性质的空响应；
+                # 但排除 thinking_signature（thinking-only 响应没有文本块是正常的）。
+                contents.append("")
             if resp.get("success"):
                 success_count += 1
 

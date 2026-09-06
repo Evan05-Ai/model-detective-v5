@@ -1,5 +1,7 @@
 // ============ Starfield Canvas Animation ============
 (function() {
+  // v3.0: 尊重系统"减少动态效果"设置——不渲染星空动画
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const canvas = document.getElementById('star-canvas');
   if (!canvas) return;
 

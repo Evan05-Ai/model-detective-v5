@@ -75,10 +75,14 @@ def request_with_retry(
     - 429 限流：优先读取 Retry-After 头，否则指数退避
     - 5xx 错误：指数退避重试
     - 超时使用分检测器配置
+    - v3.0 安全：默认禁用重定向（allow_redirects=False）。
+      SSRF 校验只覆盖初始 URL，若跟随重定向，中转站可用 302 把请求
+      引向内网地址（如 169.254.169.254）绕过校验。API 端点不应依赖重定向。
     """
     cfg = config or RetryConfig()
     timeout = get_timeout(detector_name)
     kwargs.setdefault("timeout", timeout)
+    kwargs.setdefault("allow_redirects", False)
 
     last_exc: Optional[Exception] = None
 

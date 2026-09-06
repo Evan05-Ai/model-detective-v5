@@ -61,10 +61,10 @@ class OpenAIClient(BaseProtocolClient):
         
         if base.endswith("/v1"):
             # 去掉末尾的 /v1，避免 rstrip 陷阱
-            clean_base = base[:-3] if base.endswith("/v1") else base
+            clean_base = base[:-3]
+            # 注意：clean_base + /v1/chat/completions 与第 1 项相同，不再重复
             url_candidates = [
                 f"{base}/chat/completions",
-                f"{clean_base}/v1/chat/completions",
                 f"{clean_base}/chat/completions",
             ]
         else:
@@ -245,6 +245,7 @@ class OpenAIClient(BaseProtocolClient):
                 json=payload,
                 stream=True,
                 timeout=120,
+                allow_redirects=False,
             )
 
             if resp.status_code != 200:

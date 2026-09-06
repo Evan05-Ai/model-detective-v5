@@ -9,6 +9,8 @@
 
   // ============ Starfield Canvas Animation ============
   function initStarfield() {
+    // v3.0: 尊重系统"减少动态效果"设置
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const canvas = document.getElementById('star-canvas');
     if (!canvas) return;
 
@@ -177,23 +179,17 @@
   }
 
   // ============ Provider Presets ============
-  const PROVIDERS = [
-    { name: 'Anthropic Official', url: 'https://api.anthropic.com/v1' },
-    { name: 'OpenAI Official', url: 'https://api.openai.com/v1' },
-    { name: 'Gemini Official', url: 'https://generativelanguage.googleapis.com/v1beta' },
-    { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1' },
-    { name: 'DeepSeek Official', url: 'https://api.deepseek.com/v1' },
-    { name: 'Moonshot (Kimi)', url: 'https://api.moonshot.cn/v1' },
-    { name: 'SiliconFlow', url: 'https://api.siliconflow.cn/v1' },
-    { name: 'Groq', url: 'https://api.groq.com/openai/v1' },
-    { name: 'Together AI', url: 'https://api.together.xyz/v1' },
-    { name: 'Fireworks AI', url: 'https://api.fireworks.ai/inference/v1' },
-    { name: 'Mistral AI', url: 'https://api.mistral.ai/v1' },
-    { name: 'Cerebras', url: 'https://api.cerebras.ai/v1' },
-    { name: 'SambaNova', url: 'https://api.sambanova.ai/v1' },
-    { name: 'Novita AI', url: 'https://api.novita.ai/v3/openai' },
-    { name: 'Zhipu (GLM)', url: 'https://open.bigmodel.cn/api/paas/v4' },
-  ];
+  // v3.0: 服务商列表统一从 /api/providers 拉取（后端单一来源），消除三处硬编码重复
+  let PROVIDERS = [];
+  async function loadProviders() {
+    try {
+      const resp = await fetch('/api/providers');
+      const data = await resp.json();
+      if (Array.isArray(data.providers) && data.providers.length) {
+        PROVIDERS = data.providers;
+      }
+    } catch (e) { /* 拉取失败仅影响下拉便利项，主流程不受影响 */ }
+  }
 
   // ============ State ============
   const state = {
@@ -1110,6 +1106,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     initStarfield();
     initNavbarScroll();
+    loadProviders();
     initParticles();
     initMouseTracking();
     initScrollProgress();

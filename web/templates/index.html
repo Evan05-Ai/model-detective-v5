@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=COSMIC_V5_1_20260804">
+    <link rel="stylesheet" href="/static/style.css?v=COSMIC_V300_20260906">
 </head>
 <body>
 <canvas id="star-canvas"></canvas>
@@ -374,157 +374,6 @@
 
 </section>
 
-<!-- ===== Model Evaluation Section (已迁移至 /evaluation 独立页面) ===== -->
-<section id="section-evaluation" hidden>
-
-<!-- Evaluation Step 1: Connection -->
-<div class="card eval-card" id="eval-step-config">
-    <div class="card-head">
-        <span class="step-badge eval-badge">1</span>
-        <h2>🧪 测评配置</h2>
-    </div>
-    <div class="card-body">
-        <div class="eval-intro">
-            <p>配置要测评的 API 中转站，用于发送测试题目并获取模型回答。</p>
-        </div>
-        <div class="field-row">
-            <div class="field">
-                <label for="eval-base_url">中转站网址 (Base URL)</label>
-                <div class="input-wrap has-suffix">
-                    <input type="text" id="eval-base_url" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false">
-                    <button class="btn-icon" id="eval-provider-btn" title="选择预置服务商" type="button">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                    </button>
-                    <div class="autocomplete" id="eval-url-autocomplete" hidden></div>
-                </div>
-                <div class="dropdown" id="eval-provider-dropdown" hidden>
-                    <div class="dropdown-search">
-                        <input type="text" id="eval-provider-search" placeholder="搜索服务商..." autocomplete="off">
-                    </div>
-                    <div class="dropdown-list" id="eval-provider-list"></div>
-                </div>
-            </div>
-            <div class="field">
-                <label for="eval-api_key">API Key</label>
-                <div class="input-wrap has-suffix">
-                    <input type="password" id="eval-api_key" placeholder="sk-..." autocomplete="off" spellcheck="false">
-                    <button class="btn-icon" id="eval-toggle-key" title="显示/隐藏密钥" type="button">
-                        <svg class="icon-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        <svg class="icon-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                    </button>
-                </div>
-            </div>
-        </div>
-        <div class="probe-status" id="eval-probe-pill" hidden></div>
-    </div>
-</div>
-
-<!-- Evaluation Step 2: Models -->
-<div class="card" id="eval-step-models" hidden>
-    <div class="card-head">
-        <span class="step-badge">2</span>
-        <h2>选择待测评模型</h2>
-        <div class="card-actions">
-            <button class="btn-ghost" id="eval-select-all-models" type="button">全选</button>
-            <button class="btn-ghost" id="eval-deselect-all-models" type="button">清空</button>
-            <button class="btn-ghost" id="eval-manual-model-btn" type="button">+ 手动添加</button>
-        </div>
-    </div>
-    <div class="card-body">
-        <div class="tab-bar" id="eval-protocol-tabs">
-            <button class="tab active" data-eval-proto="all" type="button">全部</button>
-            <button class="tab" data-eval-proto="anthropic" type="button"><span class="dot dot-anthropic"></span>Anthropic</button>
-            <button class="tab" data-eval-proto="openai" type="button"><span class="dot dot-openai"></span>OpenAI</button>
-            <button class="tab" data-eval-proto="gemini" type="button"><span class="dot dot-gemini"></span>Gemini</button>
-        </div>
-        <div class="manual-row" id="eval-manual-input-row" hidden>
-            <input type="text" id="eval-manual-model-input" placeholder="输入模型名 (如 gpt-4o, claude-sonnet-4-5-20250514)..." autocomplete="off">
-            <button class="btn-secondary" id="eval-add-manual-model" type="button">添加</button>
-        </div>
-        <div class="model-grid" id="eval-model-grid"></div>
-        <div class="eval-section" style="margin-top: 1rem;">
-            <div class="eval-section-title"><span class="icon">📋</span> 或手动输入模型列表（每行一个，或逗号分隔）</div>
-            <textarea class="eval-models-input" id="eval-models-input" placeholder="agnes-2.5-flash&#10;deepseek-v4-pro&#10;mimo-v2.5-pro&#10;qwen-3.7-max&#10;glm-5.2"></textarea>
-        </div>
-    </div>
-</div>
-
-<!-- Evaluation Step 3: Dimensions -->
-<div class="card" id="eval-step-dimensions" hidden>
-    <div class="card-head">
-        <span class="step-badge">3</span>
-        <h2>选择测评维度</h2>
-    </div>
-    <div class="card-body">
-        <div class="eval-section">
-            <div class="eval-section-title"><span class="icon">📊</span> 测评维度（可多选）</div>
-            <div class="eval-dimensions" id="eval-dimensions">
-                <label class="eval-dim-checkbox checked" data-dim="basic_language">
-                    <input type="checkbox" checked> 基础语言
-                </label>
-                <label class="eval-dim-checkbox checked" data-dim="technical">
-                    <input type="checkbox" checked> 技术能力
-                </label>
-                <label class="eval-dim-checkbox checked" data-dim="advanced_cognition">
-                    <input type="checkbox" checked> 高级认知
-                </label>
-                <label class="eval-dim-checkbox checked" data-dim="practical">
-                    <input type="checkbox" checked> 实用能力
-                </label>
-                <label class="eval-dim-checkbox checked" data-dim="boundary">
-                    <input type="checkbox" checked> 边界鲁棒
-                </label>
-            </div>
-        </div>
-        <div class="eval-section">
-            <div class="eval-section-title"><span class="icon">⚡</span> 测评模式</div>
-            <div class="eval-difficulty-row" id="eval-difficulty">
-                <div class="eval-difficulty-option active" data-diff="quick">
-                    <div class="diff-label">精简版</div>
-                    <div class="diff-desc">20题 · 快速预览</div>
-                    <div class="diff-time">~2分钟/模型</div>
-                </div>
-                <div class="eval-difficulty-option" data-diff="standard">
-                    <div class="diff-label">标准版</div>
-                    <div class="diff-desc">40题 · 均衡覆盖</div>
-                    <div class="diff-time">~5分钟/模型</div>
-                </div>
-                <div class="eval-difficulty-option" data-diff="full">
-                    <div class="diff-label">完整版</div>
-                    <div class="diff-desc">100题 · 全面测评</div>
-                    <div class="diff-time">~12分钟/模型</div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Evaluation Step 4: Launch -->
-<div class="card" id="eval-step-launch" hidden>
-    <div class="card-head">
-        <span class="step-badge">4</span>
-        <h2>启动测评</h2>
-    </div>
-    <div class="card-body">
-        <div class="summary-box" id="eval-launch-summary"></div>
-        <button class="btn-primary btn-block" id="eval-start-btn" type="button">开始测评</button>
-    </div>
-</div>
-
-<!-- Evaluation Step 5: Results -->
-<div class="card" id="eval-step-results" hidden>
-    <div class="card-head">
-        <span class="step-badge">5</span>
-        <h2>测评结果</h2>
-    </div>
-    <div class="card-body">
-        <div id="eval-progress-container"></div>
-        <div id="eval-results-container"></div>
-    </div>
-</div>
-
-</section>
-
 </main>
 
 <!-- 回到顶部按钮 -->
@@ -535,11 +384,11 @@
 </div>
 
 <footer class="footer">
-    Model Detective v2.9.1-web · Cosmic Galaxy v5.1 · 31 检测器 · 3 协议 · 100 测评题 · <a href="https://github.com/Evan05-Ai/model-detective-v5" target="_blank">GitHub</a>
+    Model Detective v3.0.0-web · Cosmic Galaxy v5.1 · 31 检测器 · 3 协议 · 100 测评题 · <a href="https://github.com/Evan05-Ai/model-detective-v5" target="_blank">GitHub</a>
 </footer>
 
 </div>
-<script src="/static/starfield.js?v=COSMIC_V5_1_20260804"></script>
-<script src="/static/app.js?v=COSMIC_V5_1_20260804"></script>
+<script src="/static/starfield.js?v=COSMIC_V300_20260906"></script>
+<script src="/static/app.js?v=COSMIC_V300_20260906"></script>
 </body>
 </html>

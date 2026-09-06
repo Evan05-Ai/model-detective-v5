@@ -48,21 +48,17 @@ class AnthropicClient(BaseProtocolClient):
         - {base}/v1/messages
         - {base}/anthropic/messages
         返回第一个返回有效 JSON 的 URL 对应的响应数据。
+
+        v3.0 修复：改走 session（含浏览器 UA，可过 Cloudflare WAF）+
+        request_with_retry 重试。此前用裸 requests 无浏览器头，WAF 站点
+        上此回退路径必被 403 拦截，URL 自动发现失效。
         """
-        import requests as req
-
-        headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        }
-
         base = self.base_url.rstrip("/")
-        
+
         # 构建候选 URL 列表 - 扩大尝试范围
         if base.endswith("/v1"):
             # 去掉末尾的 /v1，避免重复拼接
-            clean_base = base[:-3] if base.endswith("/v1") else base
+            clean_base = base[:-3]
             url_candidates = [
                 f"{base}/messages",
                 f"{clean_base}/v1/messages",
@@ -77,7 +73,12 @@ class AnthropicClient(BaseProtocolClient):
 
         for url in url_candidates:
             try:
-                resp = req.post(url, json=payload, headers=headers, timeout=15)
+                resp = request_with_retry(
+                    self.session, "POST",
+                    url,
+                    json=payload,
+                    detector_name=detector_name,
+                )
                 if resp.status_code == 200:
                     try:
                         data = resp.json()
@@ -296,6 +297,7 @@ class AnthropicClient(BaseProtocolClient):
                 json=payload,
                 stream=True,
                 timeout=120,
+                allow_redirects=False,
             )
 
             if resp.status_code != 200:

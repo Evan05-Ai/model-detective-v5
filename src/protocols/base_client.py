@@ -21,11 +21,6 @@ class TokenUsage:
     cache_creation_input_tokens: int = 0      # 创建缓存消耗的 input tokens
     cache_read_input_tokens: int = 0          # 读取缓存消耗的 input tokens（打折计费）
 
-    @property
-    def cost_usd(self) -> float:
-        """粗略估算费用（按 GPT-4o 定价）"""
-        return (self.prompt_tokens * 2.5 + self.completion_tokens * 10) / 1_000_000
-
 
 @dataclass
 class ProtocolResponse:

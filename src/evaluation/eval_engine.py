@@ -11,6 +11,7 @@ Model Evaluation Engine — 模型能力测评引擎
 from __future__ import annotations
 
 import json
+import re
 import time
 import threading
 from dataclasses import dataclass, field
@@ -868,12 +869,54 @@ STANDARD_QUESTIONS: list[EvalQuestion] = [
     *ADVANCED_QUESTIONS[:8],
     # 实用 (8题)
     *PRACTICAL_QUESTIONS[:8],
-    # 边界 (4题)
-    *BOUNDARY_QUESTIONS[:4],
+    # 边界 (8题) — v3.0: 4→8 题，凑齐 40 题与 UI 文案一致
+    *BOUNDARY_QUESTIONS[:8],
 ]
 
 
 # ==================== 评分器 ====================
+
+# v3.0 评分引擎升级：
+#   - 拉丁关键词用词边界匹配（修复 "B" 子串误中 achievable、"max" 误中 maximum）
+#   - option_match 从"包含字母 a/b/c/d 即得分"改为提取明确选项表达（A) / 选项B / 答案是C），
+#     并引入反关键词：明确选错选项只给 10 分而非 70 分
+#   - code_check 从"含 3 个通用词给 80 分"改为结构要素（定义+控制流）+ 题目要素命中率组合评分
+
+# 拉丁字母/数字组成的关键词（可安全使用词边界），其余（中文、H₂O 等）用子串匹配
+_LATIN_KEYWORD_RE = re.compile(r"[a-z0-9][a-z0-9\s\-_+\.]*", re.IGNORECASE)
+
+_OPTION_LETTERS = ("a", "b", "c", "d")
+
+
+def _match_keyword(keyword: str, answer_lower: str) -> bool:
+    """关键词匹配：拉丁关键词用词边界，中文等直接子串。"""
+    kw = keyword.lower().strip()
+    if not kw:
+        return False
+    if _LATIN_KEYWORD_RE.fullmatch(kw):
+        pattern = r"(?<![a-z0-9])" + re.escape(kw) + r"(?![a-z0-9])"
+        return re.search(pattern, answer_lower) is not None
+    return kw in answer_lower
+
+
+def _extract_option_letters(answer_lower: str) -> set:
+    """提取答案中"明确表达"的选项字母。
+
+    识别：A)  B.  C、  D：  [A] / 选项A / option B / 答案是C / pick d 等。
+    普通英文单词中的 a/b/c/d 不会被计入。
+    """
+    letters = set()
+    # 字母紧跟选项分隔符：A) A. A、 A： [A]
+    for m in re.finditer(r"(?<![a-z0-9])([abcd])\s*[).、:：\]]", answer_lower):
+        letters.add(m.group(1))
+    # 明确的选择句式：选项A / option B / answer is C / 答案是d / pick b
+    for m in re.finditer(
+        r"(?:选项|option|answer|答案|选|choose|pick)[^a-z0-9]{0,6}([abcd])(?![a-z0-9])",
+        answer_lower,
+    ):
+        letters.add(m.group(1))
+    return letters
+
 
 def score_answer(question: EvalQuestion, answer: str) -> dict:
     """
@@ -896,7 +939,7 @@ def score_answer(question: EvalQuestion, answer: str) -> dict:
     if rule_type == "keyword_match":
         min_matches = rules.get("min_matches", 1)
         keywords = question.expected_keywords
-        matched = [kw for kw in keywords if kw.lower() in answer_lower]
+        matched = [kw for kw in keywords if _match_keyword(kw, answer_lower)]
         if len(matched) >= min_matches:
             # 按比例加分
             ratio = len(matched) / len(keywords) if keywords else 0.5
@@ -907,18 +950,40 @@ def score_answer(question: EvalQuestion, answer: str) -> dict:
             result["details"] = f"关键词匹配不足 (需要{min_matches}, 匹配{len(matched)}/{len(keywords)})"
 
     elif rule_type == "option_match":
-        # 选择题匹配
-        if any(opt.lower() in answer_lower for opt in ["a", "b", "c", "d"]):
-            # 简单检查是否选择了选项
-            result["score"] = question.max_score * 0.7
-            result["details"] = "选择了选项"
-        if any(kw.lower() in answer_lower for kw in question.expected_keywords):
+        # 选择题匹配（v3.0：明确选项表达 + 反关键词扣分）
+        keywords = question.expected_keywords
+        correct_letters = {kw.strip().lower() for kw in keywords if kw.strip().lower() in _OPTION_LETTERS}
+        text_keywords = [kw for kw in keywords if kw.strip().lower() not in _OPTION_LETTERS]
+
+        expressed = _extract_option_letters(answer_lower)
+        listed_all = len(expressed) >= 4   # 把 A/B/C/D 全部列出 = 复述题目而非作答
+        if listed_all:
+            expressed = set()
+
+        text_hit = any(_match_keyword(kw, answer_lower) for kw in text_keywords)
+        correct_hit = bool(expressed & correct_letters) or text_hit
+        wrong_hit = bool(expressed - correct_letters) if correct_letters else False
+
+        if listed_all:
+            result["score"] = question.max_score * 0.3
+            result["details"] = "仅复述全部选项，未明确作答"
+        elif correct_hit and not wrong_hit:
+            picked = sorted(expressed & correct_letters)
             result["score"] = question.max_score
-            result["details"] = "正确识别"
+            result["details"] = "正确识别" + (f" (选项 {', '.join(picked).upper()})" if picked else "")
+        elif correct_hit and wrong_hit:
+            result["score"] = question.max_score * 0.8
+            result["details"] = "同时提及正确与错误选项（对比性表述）"
+        elif wrong_hit:
+            result["score"] = question.max_score * 0.1
+            result["details"] = f"选择了错误选项 {', '.join(sorted(expressed)).upper()}"
+        else:
+            result["score"] = 0.0
+            result["details"] = "未识别到正确答案"
 
     elif rule_type == "exact_match":
         # 精确匹配（数学题等）
-        if any(kw in answer for kw in question.expected_keywords):
+        if any(_match_keyword(kw, answer_lower) for kw in question.expected_keywords):
             result["score"] = question.max_score
             result["details"] = "答案正确"
         else:
@@ -926,18 +991,26 @@ def score_answer(question: EvalQuestion, answer: str) -> dict:
             result["details"] = "答案不正确"
 
     elif rule_type == "code_check":
-        # 代码题：检查是否包含必要的代码结构
-        code_keywords = ["def", "class", "function", "const", "let", "var", "return", "if", "for"]
-        found = [kw for kw in code_keywords if kw in answer_lower]
-        if len(found) >= 3:
-            result["score"] = question.max_score * 0.8
-            result["details"] = f"包含代码结构: {found[:5]}"
-        elif len(found) >= 1:
-            result["score"] = question.max_score * 0.5
-            result["details"] = "部分代码结构"
+        # 代码题（v3.0：结构要素 + 题目要素命中率，替代通用词计数）
+        def_kw = ["def ", "class ", "function", "=>", "const ", "let ", "var ", "lambda"]
+        ctrl_kw = ["if", "for", "while", "return", "elif", "else", "switch", "match"]
+        has_def = any(k in answer_lower for k in def_kw)
+        has_ctrl = any(_match_keyword(k, answer_lower) for k in ctrl_kw)
+        kw_matched = [kw for kw in question.expected_keywords if _match_keyword(kw, answer_lower)]
+        kw_ratio = (len(kw_matched) / len(question.expected_keywords)) if question.expected_keywords else 0.0
+
+        if has_def and has_ctrl:
+            base = 0.8
+            struct_desc = "结构完整"
+        elif has_def or has_ctrl:
+            base = 0.5
+            struct_desc = "结构部分"
         else:
-            result["score"] = question.max_score * 0.2
-            result["details"] = "未检测到代码"
+            base = 0.2
+            struct_desc = "未检测到代码结构"
+
+        result["score"] = min(1.0, base + kw_ratio * 0.2) * question.max_score
+        result["details"] = f"{struct_desc} | 题目要素 {len(kw_matched)}/{len(question.expected_keywords or [])}"
 
     elif rule_type == "length_check":
         # 长度检查
@@ -957,7 +1030,7 @@ def score_answer(question: EvalQuestion, answer: str) -> dict:
     else:
         # 默认：关键词匹配
         if question.expected_keywords:
-            matched = sum(1 for kw in question.expected_keywords if kw.lower() in answer_lower)
+            matched = sum(1 for kw in question.expected_keywords if _match_keyword(kw, answer_lower))
             result["score"] = question.max_score * min(1.0, matched / max(1, len(question.expected_keywords)))
             result["details"] = f"匹配 {matched}/{len(question.expected_keywords)} 关键词"
 

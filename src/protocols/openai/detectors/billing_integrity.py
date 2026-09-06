@@ -154,13 +154,24 @@ class BillingIntegrityDetector(ActiveDetector):
 
         if cached_tokens > 0:
             details_parts.append(f"cached_tokens={cached_tokens}")
-            # 非缓存请求返回 cached_tokens 是明确的异常
-            score -= 20
-            issues.append(Issue(
-                level=IssueLevel.MAJOR,
-                message=f"非缓存请求却返回 cached_tokens={cached_tokens}，可能虚报缓存计费",
-                detector_name=self.name,
-            ))
+            # v3.0: OpenAI 自动 prompt caching 仅对 ≥1024 token 的 prompt 生效。
+            # 中转站上游若添加了长系统提示（reported_input ≥1024），缓存命中是
+            # 正常现象（且缓存读取计费更低，对用户反而有利），不再误判为虚报；
+            # 短 prompt（<1024）出现 cached_tokens 才是明确异常。
+            if reported_input >= 1024:
+                issues.append(Issue(
+                    level=IssueLevel.OK,
+                    message=f"cached_tokens={cached_tokens}，prompt 达到自动缓存门槛（≥1024），属正常缓存命中",
+                    detector_name=self.name,
+                ))
+            else:
+                # 非缓存请求返回 cached_tokens 是明确的异常
+                score -= 20
+                issues.append(Issue(
+                    level=IssueLevel.MAJOR,
+                    message=f"非缓存请求却返回 cached_tokens={cached_tokens}，可能虚报缓存计费",
+                    detector_name=self.name,
+                ))
         else:
             details_parts.append("cached=无")
             issues.append(Issue(

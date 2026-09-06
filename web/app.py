@@ -244,7 +244,11 @@ def api_probe():
         for headers in [headers_bearer, headers_anthropic]:
             total_attempts += 1
             try:
-                resp = _requests.get(url, headers=headers, timeout=8)
+                # v3.0: 禁用重定向 — SSRF 校验只覆盖初始 URL，
+                # 跟随 302 会把请求引向内网地址绕过校验
+                resp = _requests.get(url, headers=headers, timeout=8, allow_redirects=False)
+                if 300 <= resp.status_code < 400:
+                    continue
             except _requests.exceptions.Timeout:
                 continue
             except _requests.exceptions.ConnectionError:
@@ -757,9 +761,16 @@ def _serialize_report(report, protocol, degraded, degrade_reason, base_url: str 
             "details": r.details,
             "issues": issues,
             "has_critical": r.has_critical,
+            # v3.0: 置信度系统接入前端（v2.6 已在检测器层实现但从未输出）
+            "confidence": round(r.confidence, 2),
+            "confidence_reason": r.confidence_reason,
         })
 
     verdict_info = VERDICT_CN.get(verdict_key, {"color": "#ef4444", "label": "UNKNOWN", "cn": "未知"})
+
+    # v3.0: 整体置信度统计（低置信度检测项列表供前端提示"哪些结论仅供参考"）
+    from src.core.scorer import calculate_confidence_stats
+    confidence_stats = calculate_confidence_stats(report.results)
 
     return {
         "model": report.model,
@@ -782,6 +793,7 @@ def _serialize_report(report, protocol, degraded, degrade_reason, base_url: str 
         "backend_source": report.backend_source,
         "backend_source_cn": BACKEND_CN.get(report.backend_source, report.backend_source),
         "duration_seconds": round(report.duration_seconds, 1),
+        "confidence_stats": confidence_stats,
         "results": results,
     }
 
@@ -816,6 +828,8 @@ from src.evaluation.reporter import result_to_dict as _eval_result_to_dict
 _EVAL_JOBS: dict[str, dict] = {}
 _EVAL_LOCK = threading.Lock()
 _MAX_EVAL_JOBS = 200  # prevent unbounded memory growth
+_MAX_EVAL_CONCURRENT = 2  # v3.0: 测评任务并发上限（full=100题×N模型，比检测更重）
+_EVAL_SEMA = threading.Semaphore(_MAX_EVAL_CONCURRENT)
 
 
 def _gc_eval_jobs():
@@ -832,6 +846,52 @@ def _gc_eval_jobs():
             del _EVAL_JOBS[jid]
             if len(_EVAL_JOBS) <= _MAX_EVAL_JOBS:
                 break
+
+
+def _select_eval_questions(difficulty: str, dimensions: list) -> list:
+    """v3.0: 按难度+维度选题。
+
+    维度选择不再被 difficulty 静默覆盖：quick/standard 题集按勾选的维度过滤；
+    未勾选维度（=全部）时用完整题集；full 按维度从完整题库组装。
+    """
+    from src.evaluation.eval_engine import (
+        BASIC_LANGUAGE_QUESTIONS, TECHNICAL_QUESTIONS,
+        ADVANCED_QUESTIONS, PRACTICAL_QUESTIONS, BOUNDARY_QUESTIONS,
+        QUICK_QUESTIONS, STANDARD_QUESTIONS,
+    )
+
+    dimension_map = {
+        "basic_language": BASIC_LANGUAGE_QUESTIONS,
+        "technical": TECHNICAL_QUESTIONS,
+        "advanced_cognition": ADVANCED_QUESTIONS,
+        "practical": PRACTICAL_QUESTIONS,
+        "boundary": BOUNDARY_QUESTIONS,
+    }
+
+    if not dimensions:
+        # 全部维度
+        questions = []
+        for dim_questions in dimension_map.values():
+            questions.extend(dim_questions)
+    else:
+        questions = []
+        for dim in dimensions:
+            if dim in dimension_map:
+                questions.extend(dimension_map[dim])
+
+    # 按难度筛选（保留维度过滤）
+    if difficulty == "quick":
+        if dimensions:
+            questions = [q for q in QUICK_QUESTIONS if q.dimension.value in dimensions]
+        else:
+            questions = list(QUICK_QUESTIONS)
+    elif difficulty == "standard":
+        if dimensions:
+            questions = [q for q in STANDARD_QUESTIONS if q.dimension.value in dimensions]
+        else:
+            questions = list(STANDARD_QUESTIONS)
+
+    return questions
 
 
 @app.post("/api/evaluate")
@@ -856,39 +916,10 @@ def api_evaluate():
     if not models or not isinstance(models, list):
         return jsonify({"ok": False, "error": "Please select at least one model"}), 400
 
-    # 加载题库
-    from src.evaluation.eval_engine import (
-        EvaluationEngine, EvalDimension, EvalDifficulty,
-        BASIC_LANGUAGE_QUESTIONS, TECHNICAL_QUESTIONS,
-        ADVANCED_QUESTIONS, PRACTICAL_QUESTIONS, BOUNDARY_QUESTIONS,
-    )
+    # 加载题库（v3.0: 选题逻辑抽取为 _select_eval_questions，可独立测试）
+    from src.evaluation.eval_engine import EvaluationEngine
 
-    dimension_map = {
-        "basic_language": BASIC_LANGUAGE_QUESTIONS,
-        "technical": TECHNICAL_QUESTIONS,
-        "advanced_cognition": ADVANCED_QUESTIONS,
-        "practical": PRACTICAL_QUESTIONS,
-        "boundary": BOUNDARY_QUESTIONS,
-    }
-
-    if not dimensions:
-        # 全部维度
-        questions = []
-        for dim_questions in dimension_map.values():
-            questions.extend(dim_questions)
-    else:
-        questions = []
-        for dim in dimensions:
-            if dim in dimension_map:
-                questions.extend(dimension_map[dim])
-
-    # 按难度筛选
-    if difficulty == "quick":
-        from src.evaluation.eval_engine import QUICK_QUESTIONS
-        questions = QUICK_QUESTIONS
-    elif difficulty == "standard":
-        from src.evaluation.eval_engine import STANDARD_QUESTIONS
-        questions = STANDARD_QUESTIONS
+    questions = _select_eval_questions(difficulty, dimensions)
 
     job_id = secrets.token_urlsafe(8)
     engine = EvaluationEngine(base_url, api_key)
@@ -918,59 +949,63 @@ def api_evaluate():
 
 
 def _run_evaluation(job_id: str, engine, models: list, questions: list):
-    """后台执行测评任务"""
-    with _EVAL_LOCK:
-        job = _EVAL_JOBS.get(job_id)
-        if not job:
-            return
-        job["status"] = "running"
-
+    """后台执行测评任务（semaphore 限制并发，防止多任务同时打满中转站）"""
+    _EVAL_SEMA.acquire()
     try:
-        def on_progress(current, total, qid, score):
-            with _EVAL_LOCK:
-                j = _EVAL_JOBS.get(job_id)
-                if j:
-                    j["progress"].append({
-                        "type": "progress",
-                        "current": current,
-                        "total": total,
-                        "score": score,
-                    })
-
-        for model in models:
-            with _EVAL_LOCK:
-                j = _EVAL_JOBS.get(job_id)
-                if j:
-                    j["progress"].append({
-                        "type": "model_start",
-                        "model": model,
-                    })
-
-            result = engine.evaluate_model(model, questions, on_progress=on_progress)
-
-            with _EVAL_LOCK:
-                j = _EVAL_JOBS.get(job_id)
-                if j:
-                    j["results"].append(_eval_result_to_dict(result))
-                    j["progress"].append({
-                        "type": "model_done",
-                        "model": model,
-                    })
-
         with _EVAL_LOCK:
-            j = _EVAL_JOBS.get(job_id)
-            if j:
-                j["status"] = "done"
-                j["finished_at"] = time.time()
+            job = _EVAL_JOBS.get(job_id)
+            if not job:
+                return
+            job["status"] = "running"
 
-    except Exception as e:
-        with _EVAL_LOCK:
-            j = _EVAL_JOBS.get(job_id)
-            if j:
-                j["status"] = "error"
-                j["error"] = str(e)
+        try:
+            def on_progress(current, total, qid, score):
+                with _EVAL_LOCK:
+                    j = _EVAL_JOBS.get(job_id)
+                    if j:
+                        j["progress"].append({
+                            "type": "progress",
+                            "current": current,
+                            "total": total,
+                            "score": score,
+                        })
+
+            for model in models:
+                with _EVAL_LOCK:
+                    j = _EVAL_JOBS.get(job_id)
+                    if j:
+                        j["progress"].append({
+                            "type": "model_start",
+                            "model": model,
+                        })
+
+                result = engine.evaluate_model(model, questions, on_progress=on_progress)
+
+                with _EVAL_LOCK:
+                    j = _EVAL_JOBS.get(job_id)
+                    if j:
+                        j["results"].append(_eval_result_to_dict(result))
+                        j["progress"].append({
+                            "type": "model_done",
+                            "model": model,
+                        })
+
+            with _EVAL_LOCK:
+                j = _EVAL_JOBS.get(job_id)
+                if j:
+                    j["status"] = "done"
+                    j["finished_at"] = time.time()
+
+        except Exception as e:
+            with _EVAL_LOCK:
+                j = _EVAL_JOBS.get(job_id)
+                if j:
+                    j["status"] = "error"
+                    j["error"] = str(e)
+        finally:
+            engine.close()
     finally:
-        engine.close()
+        _EVAL_SEMA.release()
 
 
 @app.get("/api/evaluate/status/<job_id>")
@@ -1046,7 +1081,7 @@ def evaluation():
 
 @app.get("/health")
 def health():
-    return jsonify({"ok": True, "version": "2.9.1-web"})
+    return jsonify({"ok": True, "version": "3.0.0-web"})
 
 # ── Entry point ──────────────────────────────────────────────
 
