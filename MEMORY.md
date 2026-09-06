@@ -1,11 +1,42 @@
 # Model Detective — 项目记忆文件
 
 > 最后更新: 2026-09-07 (UTC+8)
-> 当前版本: v3.0.1 后端（预算口径修复）+ Cosmic Galaxy v5.1 前端（资产 COSMIC_V300_20260906）
+> 当前版本: v3.0.2 后端（降本增效纯赚批次）+ Cosmic Galaxy v5.1 前端（资产 COSMIC_V300_20260906）
 > 部署状态: Cloudflare Tunnel ✅ (detect.model-detective.online，隧道 model-detective-v2)
 > 技术栈: Python Flask + Vanilla JS + HTML/CSS
 > GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
-> 测试基线: pytest 111/111（v3.0.0 新增 25 项 + v3.0.1 新增 8 项）
+> 测试基线: pytest 114/114
+
+---
+
+## 2026-09-07 v3.0.2 降本增效"纯赚批次"（重要）
+
+### 背景
+v3.0.1 预算修复后评估了 6 个降本方案，决策：**做 1+2+6（零信号损失），否决 3（隐藏陷阱），冻结 4/5**。决策依据记录在此防翻案。
+
+### 已落地（3 项）
+
+1. **探活/预检去重**（省 1 请求/模型）：`ProtocolResolver` 新增 `native_probe_succeeded` 标记；`Runner` 新增 `skip_preflight` 参数；`web/app.py::_execute_single_detection` 在 auto 协议且原生探活成功时传入。用户手选协议时无探活，预检保留（fail-fast 语义不变）。
+2. **message_id 转被动检测器**（省 1 请求/模型，样本量反增）：ActiveDetector → PassiveDetector，从观察队列其他检测器响应的 `raw.id` 校验，standard 模式可观察 ~10 个 id（原自发请求只有 1 个）。评分语义保持：缺 id→30、非 msg_ 前缀→20 CRITICAL、id 过短→60、toolu_ 前缀错→-20 MAJOR。**新增重放检测**：不同请求返回相同 message id → MINOR -10（网关缓存/重放特征）。无观察数据时 score 20 + confidence 0（对齐 integrity 模式）。
+3. **thinking_signature max_tokens 1500→1150**（省 ~350 token/次）：thinking 1024 是 API 下限不动；"17×23"答案只需 ~20 token；签名在 thinking 块上，答案截断不影响检测。
+
+### 明确否决/冻结（防翻案）
+
+- **否决 consistency 3→2 次**：评分器 `generate_issues` 的规则是 2 请求 2 变体=MAJOR、3 请求 2 变体=MINOR——降到 2 次会把同样的自然噪声从"轻微不一致"升级为"重大不一致"，真伪维度误报率反升。省 2 个请求（诚实中转站上约 120 token）不值得砸核心卖点。
+- **冻结 knowledge 3→2 题**：省 1 请求但要动数据结构+测试，收益不成比例。
+- **冻结 token_usage 并入 billing_integrity**：方向对但牵动权重表重归一/DETECTOR_MODES/测试，等下次动评分配置时顺手做。
+
+### 消耗结论（评估基线，防重复评估）
+- 我方边际消耗：Quick ~3k / Standard ~4-5k / Full ~6-7k tokens（诚实中转站计费口径）；网页端不跑 long_context（33 万 token 大户仅 CLI 可开）
+- Kiro 类中转站账面大头是它自己每请求 ~45k 的 cache_read 上报（1 折价），非我方杠杆；唯一杠杆是请求数（本批次 -2~3 请求 ≈ -15-20%）
+- thinking_signature 的 ~2.5k output 是剩余大头，但它是权重 0.25 的核心信号——**帕累托前沿已到，再砍就是拿信号换几分钱**
+
+### 待办池（产品级机会，非 token 优化）
+- **单请求固定开销披露**：Kiro 类中转站每请求强制附带 ~45k token 系统提示开销，billing_integrity 已有数据，可披露为报告中的计费公平性发现（"该站单请求固定开销 45k，缓存读取占比 99%，每次对话都在为它的系统提示付费"）——把成本问题转化为检测价值，零额外请求。
+
+### 验证
+- pytest 114/114（message_id 新增 3 项：坏前缀 CRITICAL / 无观察低置信 / 重放扣分；注册表断言更新 active 11 + passive 2）
+- 烟测：/health v3.0.2-web，首页/测评页 200
 
 ---
 

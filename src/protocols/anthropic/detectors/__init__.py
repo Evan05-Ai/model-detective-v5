@@ -30,7 +30,6 @@ def build_active_detectors(long_context: bool = False) -> List[ActiveDetector]:
         FunctionCallingDetector(),
         StructuredOutputDetector(),
         PDFDetector(),
-        MessageIdDetector(),
         TokenUsageDetector(),
         BillingIntegrityDetector(),
     ]
@@ -43,4 +42,7 @@ def build_passive_detectors() -> List[PassiveDetector]:
     """构建所有 PassiveDetector"""
     return [
         IntegrityDetector(),
+        # v3.0.2: message_id 从主动转被动——观察其他检测器响应中的 id，
+        # 省 1 请求/模型且样本量更大
+        MessageIdDetector(),
     ]

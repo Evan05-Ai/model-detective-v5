@@ -90,6 +90,7 @@ class Runner:
         mode: RunMode,
         degraded: bool = False,
         max_workers: int = 4,
+        skip_preflight: bool = False,
     ):
         self.client = client
         self.active_detectors = active_detectors
@@ -99,6 +100,8 @@ class Runner:
         self.mode = mode
         self.degraded = degraded
         self.max_workers = max_workers
+        # v3.0.2: 协议解析阶段的探活请求已验证连通性时跳过预检（省 1 请求）
+        self.skip_preflight = skip_preflight
         self._observe_queue: queue.Queue = queue.Queue()
         self._token_budget = get_token_budget(mode)
         # v3.0.1: 预算记账模型重构。
@@ -121,15 +124,17 @@ class Runner:
         results: list[CheckResultV2] = []
 
         # === v2.7: Phase 0 - 预检探针 ===
-        probe_result = self._preflight_probe()
-        if probe_result is not None:
-            results.append(probe_result)
-            if probe_result.status == "error":
-                # 预检失败，跳过所有检测器
-                results.extend(self._skip_all_detectors(active, "预检探针失败，API 不可用"))
-                # 仍然运行 passive detectors（观察预检请求）
-                self._distribute_observations(passive, results)
-                return self._build_final_report(results, passive, start_time)
+        # v3.0.2: 协议解析探活已成功时跳过（同一连通性已在毫秒前验证过）
+        if not self.skip_preflight:
+            probe_result = self._preflight_probe()
+            if probe_result is not None:
+                results.append(probe_result)
+                if probe_result.status == "error":
+                    # 预检失败，跳过所有检测器
+                    results.extend(self._skip_all_detectors(active, "预检探针失败，API 不可用"))
+                    # 仍然运行 passive detectors（观察预检请求）
+                    self._distribute_observations(passive, results)
+                    return self._build_final_report(results, passive, start_time)
 
         # === v2.7: 分优先级执行 ===
         priority_groups = self._group_by_priority(active)

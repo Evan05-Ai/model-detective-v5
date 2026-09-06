@@ -57,6 +57,9 @@ class ProtocolResolver:
         self.resolved_protocol: Protocol = self.native_protocol
         self.degraded: bool = False
         self.degrade_reason: str = ""
+        # v3.0.2: 原生探活是否成功——探活请求本身已验证连通性，
+        # Runner 可据此跳过重复的预检请求（省 1 请求/模型）
+        self.native_probe_succeeded: bool = False
 
     def resolve(self) -> tuple[Protocol, bool, str]:
         """
@@ -77,6 +80,7 @@ class ProtocolResolver:
         success, reason = self._probe_native()
 
         if success:
+            self.native_probe_succeeded = True
             return self.native_protocol, False, ""
 
         # 降级到 OpenAI 兼容

@@ -3,13 +3,17 @@
 > 创建时间: 2026-09-01 (UTC+8) · 最后更新: 2026-09-07 (UTC+8)
 > 项目路径: D:\Ai工作\model-detective
 > GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
-> 当前版本: 后端 v3.0.1 + 前端 Cosmic Galaxy v5.1（资产版本 COSMIC_V300_20260906）
+> 当前版本: 后端 v3.0.2 + 前端 Cosmic Galaxy v5.1（资产版本 COSMIC_V300_20260906）
 > 部署: Cloudflare Tunnel → https://detect.model-detective.online
-> 最新基线: pytest 111/111 全绿；v3.0.1 预算口径修复已提交（服务待下次重启生效）
+> 最新基线: pytest 114/114 全绿；v3.0.1 预算修复 + v3.0.2 降本批次已提交（服务待下次重启一并生效）
 
 ---
 
 ## 一、当前状态总览
+
+### 1.0b v3.0.2 降本增效"纯赚批次"（2026-09-07）
+
+三个零信号损失优化：①探活/预检去重（Resolver.native_probe_succeeded → Runner.skip_preflight，省 1 请求）；②message_id 转被动检测器（省 1 请求且样本量反增，新增重放检测）；③thinking_signature max_tokens 1500→1150。**明确否决 consistency 3→2**（n=2 会把自然噪声从 MINOR 升级为 MAJOR，误报率反升），冻结 knowledge 精简与 token_usage 合并。Standard 检测请求数 ~15→~12。详见 MEMORY.md。
 
 ### 1.0a v3.0.1 预算耗尽修复（2026-09-07，用户线上实测发现）
 

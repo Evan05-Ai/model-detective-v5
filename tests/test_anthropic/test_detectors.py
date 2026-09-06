@@ -105,20 +105,20 @@ def test_build_active_detectors():
     assert "knowledge" in names
     assert "protocol" in names
     assert "function_calling" in names
-    assert "message_id" in names
+    assert "message_id" not in names  # v3.0.2: 转为被动检测器
     assert "token_usage" in names
     assert "pdf" in names
     assert "structured_output" in names
     assert "billing_integrity" in names  # v2.2 新增
     assert "long_context" not in names  # 默认不包含
-    assert len(dets) == 12
+    assert len(dets) == 11
     print("  [OK] test_build_active_detectors")
 
 
 def test_build_with_long_context():
     """启用 long_context"""
     dets = build_active_detectors(long_context=True)
-    assert len(dets) == 13
+    assert len(dets) == 12  # v3.0.2: message_id 转被动后 11+1
     names = [d.name for d in dets]
     assert "long_context" in names
     print("  [OK] test_build_with_long_context")
@@ -129,6 +129,7 @@ def test_build_passive_detectors():
     dets = build_passive_detectors()
     names = [d.name for d in dets]
     assert "integrity" in names
+    assert "message_id" in names  # v3.0.2: 转为被动
     print("  [OK] test_build_passive_detectors")
 
 
@@ -200,15 +201,64 @@ def test_protocol_detector():
 
 
 def test_message_id_detector():
-    """MessageIdDetector"""
+    """MessageIdDetector（v3.0.2 转被动：从观察数据校验 message id）"""
     from src.protocols.anthropic.detectors.message_id import MessageIdDetector
     det = MessageIdDetector()
-    client = MockAnthropicClient()
-    result = det.run(client)
+    # 模拟观察到 3 个其他检测器的成功响应（各自不同的合法 msg_ id）
+    for i, det_name in enumerate(("identity", "protocol", "consistency")):
+        det.observe({}, {
+            "success": True,
+            "model": "claude-opus-5",
+            "raw": {"id": f"msg_01AbCdEfGhIjKlMn{i:02d}", "content": [{"type": "text", "text": "hi"}]},
+        }, det_name)
+    result = det.finalize()
 
     assert result.name == "message_id"
-    assert result.score > 0
+    assert result.score == 100
+    assert result.confidence >= 0.85
     print(f"  [OK] test_message_id_detector (score={result.score})")
+
+
+def test_message_id_detector_replay():
+    """不同请求返回相同 message id（重放特征）应扣分"""
+    from src.protocols.anthropic.detectors.message_id import MessageIdDetector
+    det = MessageIdDetector()
+    for det_name in ("identity", "protocol", "consistency"):
+        det.observe({}, {
+            "success": True,
+            "model": "claude-opus-5",
+            "raw": {"id": "msg_01SameIdSameIdSame"},
+        }, det_name)
+    result = det.finalize()
+    assert result.score < 100
+    assert any("重复 message id" in i.message for i in result.issues)
+    print(f"  [OK] test_message_id_detector_replay (score={result.score})")
+
+
+def test_message_id_detector_bad_prefix():
+    """被动 message_id：非 msg_ 前缀应触发 CRITICAL"""
+    from src.protocols.anthropic.detectors.message_id import MessageIdDetector
+    det = MessageIdDetector()
+    det.observe({}, {
+        "success": True,
+        "model": "claude-opus-5",
+        "raw": {"id": "chatcmpl-abc123456789"},
+    }, "protocol")
+    result = det.finalize()
+
+    assert result.score <= 20
+    assert any(i.level.value == "critical" for i in result.issues)
+    print(f"  [OK] test_message_id_detector_bad_prefix (score={result.score})")
+
+
+def test_message_id_detector_no_observations():
+    """被动 message_id：无观察数据时低分低置信"""
+    from src.protocols.anthropic.detectors.message_id import MessageIdDetector
+    det = MessageIdDetector()
+    result = det.finalize()
+    assert result.score <= 30
+    assert result.confidence == 0.0
+    print(f"  [OK] test_message_id_detector_no_observations (score={result.score})")
 
 
 def test_function_calling_detector():
@@ -341,6 +391,9 @@ if __name__ == "__main__":
     test_thinking_signature_missing()
     test_protocol_detector()
     test_message_id_detector()
+    test_message_id_detector_bad_prefix()
+    test_message_id_detector_no_observations()
+    test_message_id_detector_replay()
     test_function_calling_detector()
     test_knowledge_detector()
     test_token_usage_detector()

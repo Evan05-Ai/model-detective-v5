@@ -591,11 +591,14 @@ def _execute_single_detection(base_url: str, api_key: str, model: str, mode: str
         resolved_protocol, degraded, degrade_reason = resolver.resolve()
         # v2.4: 使用 resolver 修正后的 base_url（可能已补 /v1）
         effective_base_url = resolver.base_url
+        # v3.0.2: 原生探活已验证连通性 → Runner 跳过重复预检（省 1 请求/模型）
+        skip_preflight = resolver.native_probe_succeeded
     else:
         resolved_protocol = Protocol(protocol)
         degraded = False
         degrade_reason = ""
         effective_base_url = base_url
+        skip_preflight = False
 
     # create client + detectors
     if resolved_protocol == Protocol.OPENAI:
@@ -623,6 +626,7 @@ def _execute_single_detection(base_url: str, api_key: str, model: str, mode: str
         model=model,
         mode=run_mode,
         degraded=degraded,
+        skip_preflight=skip_preflight,
     )
 
     report = runner.run()
@@ -1081,7 +1085,7 @@ def evaluation():
 
 @app.get("/health")
 def health():
-    return jsonify({"ok": True, "version": "3.0.1-web"})
+    return jsonify({"ok": True, "version": "3.0.2-web"})
 
 # ── Entry point ──────────────────────────────────────────────
 

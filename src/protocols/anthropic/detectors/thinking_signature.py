@@ -38,16 +38,19 @@ class ThinkingSignatureDetector(ActiveDetector):
     weight = WEIGHTS["thinking_signature"]
     modes = ["quick", "standard", "full"]
     timeout = 30
-    estimated_tokens = 4000      # v2.5 修正：thinking=1024 + max_tokens=1500 + prompt + overhead，实际可能消耗 2500-3500 tokens
+    estimated_tokens = 4000      # v2.5 修正：thinking=1024 + max_tokens=1150 + prompt + overhead，实际可能消耗 2500-3500 tokens
 
     def run(self, client) -> CheckResultV2:
         # 发送带 thinking 的请求
+        # v3.0.2: max_tokens 1500 → 1150（thinking 1024 是 API 下限不能动，
+        # 但 "17*23" 的答案只需 ~20 token，1150 留 126 缓冲足够；
+        # 签名在 thinking 块上，答案截断不影响检测）
         resp = client.messages(
             messages=[{
                 "role": "user",
                 "content": "Think carefully: What is 17 * 23? Show your reasoning."
             }],
-            max_tokens=1500,
+            max_tokens=1150,
             thinking={"type": "enabled", "budget_tokens": 1024},
             detector_name=self.name,
         )
