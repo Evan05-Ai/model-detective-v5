@@ -37,6 +37,7 @@ v3.0.1 预算修复后评估了 6 个降本方案，决策：**做 1+2+6（零�
 ### 验证
 - pytest 114/114（message_id 新增 3 项：坏前缀 CRITICAL / 无观察低置信 / 重放扣分；注册表断言更新 active 11 + passive 2）
 - 烟测：/health v3.0.2-web，首页/测评页 200
+- **顺带根除一个既有 flaky**：runner 计时从 `time.time()` 改 `time.perf_counter()`——Windows 粗时钟粒度下，亚毫秒完成的 Mock 运行会得到 duration_seconds=0.0，套件约 1/4 概率随机挂 `test_runner_basic`（与 v3.0.2 改动无关的历史隐患，本次被全套件跑动踩中暴露）
 
 ---
 

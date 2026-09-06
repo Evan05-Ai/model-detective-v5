@@ -115,7 +115,9 @@ class Runner:
 
     def run(self) -> "DetectionReport":
         """执行两阶段检测（v2.7 渐进式版）"""
-        start_time = time.time()
+        # v3.0.2: 用 perf_counter 计时——Windows 上 time.time() 粒度粗
+        # （毫秒级），亚毫秒完成的运行会得到 duration_seconds=0.0
+        start_time = time.perf_counter()
 
         # 过滤当前模式下的检测器
         active = [d for d in self.active_detectors if should_run_detector(d.modes, self.mode)]
@@ -361,7 +363,7 @@ class Runner:
         self, results: list[CheckResultV2], passive: list[PassiveDetector], start_time: float
     ) -> "DetectionReport":
         """构建最终报告"""
-        duration = time.time() - start_time
+        duration = time.perf_counter() - start_time
         cost_summary = self.client.get_cost_summary()
 
         return build_report(
