@@ -362,18 +362,65 @@ def test_billing_integrity_detector():
 
 
 def test_billing_integrity_inflated():
-    """BillingIntegrityDetector with inflated token counts"""
+    """BillingIntegrityDetector with inflated token counts
+
+    v3.0.4: 旧 Mock 的 15/25 tokens 其实低于估算，不构成"夸大"；
+    改用真夸大场景（input 500，绝对多出 ~480 tokens → 触发 MINOR 扣分）。
+    """
     from src.protocols.anthropic.detectors.billing_integrity import BillingIntegrityDetector
+    from src.protocols.base_client import TokenUsage, ProtocolResponse
+
+    class InflatedClient:
+        model = "claude-sonnet-4-5"
+
+        def messages(self, **kwargs):
+            return ProtocolResponse(
+                success=True, content="hello world", model=self.model,
+                headers={},
+                usage=TokenUsage(prompt_tokens=500, completion_tokens=8, total_tokens=508),
+                raw_response={},
+            )
+
     det = BillingIntegrityDetector()
-    client = MockAnthropicClient()  # returns prompt_tokens=15, completion_tokens=25
-    result = det.run(client)
+    result = det.run(InflatedClient())
 
     assert result.name == "billing_integrity"
     assert 0 <= result.score <= 100
-    assert len(result.issues) > 0
+    assert result.score < 100, f"Inflated billing should be deducted, got {result.score}"
     has_non_ok = any(i.level != IssueLevel.OK for i in result.issues)
     assert has_non_ok, "Inflated billing should trigger issues"
     print(f"  [OK] test_billing_integrity_inflated (score={result.score})")
+
+
+def test_billing_integrity_relay_cache_overhead():
+    """v3.0.4 固化回归：上游缓存系统提示透传（神秘cc 实测数字）
+
+    我方 prompt ~19 tokens，该站上报 input 47897（其中 cache_read=47872）。
+    正确行为：固定开销披露（OK，含 0.1x 折扣说明）+ cache 相干（OK 不扣分）
+    + 小分母 output 豁免 => score 100。修复前该场景曾得 45 分（三重误扣）。
+    """
+    from src.protocols.anthropic.detectors.billing_integrity import BillingIntegrityDetector
+    from src.protocols.base_client import TokenUsage, ProtocolResponse
+
+    class RelayCacheClient:
+        model = "claude-opus-4-5"
+
+        def messages(self, **kwargs):
+            return ProtocolResponse(
+                success=True, content="ok", model=self.model, headers={},
+                usage=TokenUsage(
+                    prompt_tokens=47897, completion_tokens=12, total_tokens=47909,
+                    cache_read_input_tokens=47872,
+                    cost_input_equiv=25 + 0.1 * 47872,
+                ),
+                raw_response={},
+            )
+
+    result = BillingIntegrityDetector().run(RelayCacheClient())
+    assert result.score >= 90, f"缓存透传场景不应被重扣，实际 {result.score}"
+    assert any("计费公平性提示" in i.message and "0.1x" in i.message for i in result.issues),         "披露应说明缓存读取按 0.1x 计费"
+    assert not any(i.level == IssueLevel.MAJOR for i in result.issues),         "相干缓存字段不应触发 MAJOR"
+    print(f"  [OK] test_billing_integrity_relay_cache_overhead (score={result.score})")
 
 
 if __name__ == "__main__":
@@ -399,5 +446,6 @@ if __name__ == "__main__":
     test_token_usage_detector()
     test_billing_integrity_detector()
     test_billing_integrity_inflated()
+    test_billing_integrity_relay_cache_overhead()
     test_weight_thinking_signature_highest()
     print("All Anthropic detector tests passed!")

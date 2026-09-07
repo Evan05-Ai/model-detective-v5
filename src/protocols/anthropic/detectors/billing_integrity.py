@@ -92,18 +92,35 @@ class BillingIntegrityDetector(ActiveDetector):
         reported_input = usage.prompt_tokens
         estimated_input = _estimate_tokens(_KNOWN_PROMPT)
 
-        # v3.0.3: 单请求固定开销披露（计费公平性发现）。
-        # 我方 prompt 仅 ~15 tokens；上报 input 与估算的差额即中转站注入的
-        # 系统提示/缓存写入等固定开销——它对每一次对话都照此计费。
+        # v3.0.4: 提前提取缓存字段，供固定开销披露与 Cache 审计共用
+        cache_create = usage.cache_creation_input_tokens
+        cache_read = usage.cache_read_input_tokens
+
+        # v3.0.4: 单请求固定开销披露（计费公平性发现），按缓存字段分型。
+        # 我方 prompt 仅 ~19 tokens；上报 input 与估算的差额即中转站注入的
+        # 固定开销。开销构成决定真实计费：
+        #   - cache_read 型（上游系统提示走缓存）：官方计费仅 0.1x，成本影响小
+        #   - plain/cache_creation 型：按全价/1.25x 计费，成本影响大
         fixed_overhead = reported_input - estimated_input
         if fixed_overhead > 1000:
+            overhead_parts = []
+            if cache_create > 0:
+                overhead_parts.append(f"缓存写入 {cache_create}（官方计费 1.25x）")
+            if cache_read > 0:
+                overhead_parts.append(f"缓存读取 {cache_read}（官方计费仅 0.1x）")
+            plain_overhead = fixed_overhead - cache_create - cache_read
+            if plain_overhead > 0:
+                overhead_parts.append(f"非缓存注入 {plain_overhead}（按全价计费）")
+            composition = "；".join(overhead_parts) or "按全价计费"
+            # 全价当量 = 用户按官方价"实际承受"的输入成本
+            equiv = cache_create * 1.25 + cache_read * 0.1 + max(0, plain_overhead)
             issues.append(Issue(
                 level=IssueLevel.OK,
                 message=(
                     f"计费公平性提示：我方本次请求仅约 {estimated_input} tokens，"
                     f"但该站上报输入 {reported_input} tokens——单请求固定开销 ≈{fixed_overhead} "
-                    f"tokens（通常为中转站注入的系统提示或缓存写入，写入按 1.25 倍计费）。"
-                    f"该开销会计入你的每一次对话，长期使用成本需自行评估。"
+                    f"tokens（{composition}），全价当量 ≈{int(equiv)} tokens/请求。"
+                    f"该开销会计入你的每一次对话，长期使用成本需按倍率自行评估。"
                 ),
                 detector_name=self.name,
             ))
@@ -123,19 +140,28 @@ class BillingIntegrityDetector(ActiveDetector):
         ]
 
         # v2.5: 放宽阈值，避免误报
-        # 注意：中转站可能包含系统消息、工具定义等额外 token
-        if abs(input_deviation) > 100:  # 偏差超过 100% 才认为是异常
+        # v3.0.4: 固定开销披露已覆盖大额注入场景（同一事实不重复扣分）；
+        # 偏差扣分改用绝对量门槛，避免小分母（19 tokens）放大无意义百分比
+        input_delta = reported_input - estimated_input
+        if fixed_overhead > 1000:
+            issues.append(Issue(
+                level=IssueLevel.MINOR,
+                message=f"input_tokens 显著高于估算（上报 {reported_input}，估算约 {estimated_input}），"
+                        f"详见上方固定开销披露（已计入披露，不重复扣分）",
+                detector_name=self.name,
+            ))
+        elif input_delta > 200 and abs(input_deviation) > 100:
             score -= 25
             issues.append(Issue(
                 level=IssueLevel.MINOR,
-                message=f"input_tokens 显著高于估算（上报 {reported_input}，估算约 {estimated_input}）。可能原因：中转站包含系统消息、使用不同 tokenizer、或存在额外开销",
+                message=f"input_tokens 显著高于估算（上报 {reported_input}，估算约 {estimated_input}，多出 {input_delta}）。可能原因：中转站包含系统消息、使用不同 tokenizer、或存在额外开销",
                 detector_name=self.name,
             ))
-        elif abs(input_deviation) > 50:  # 偏差 50-100% 给予提示
+        elif input_delta > 100 and abs(input_deviation) > 50:
             score -= 10
             issues.append(Issue(
                 level=IssueLevel.MINOR,
-                message=f"input_tokens 高于估算（上报 {reported_input}，估算约 {estimated_input}）。中转站可能有额外 token 开销",
+                message=f"input_tokens 高于估算（上报 {reported_input}，估算约 {estimated_input}，多出 {input_delta}）。中转站可能有额外 token 开销",
                 detector_name=self.name,
             ))
         else:
@@ -145,22 +171,33 @@ class BillingIntegrityDetector(ActiveDetector):
                 detector_name=self.name,
             ))
 
-        # ── 2. Cache 字段审计 ────────────────────────────────
-        cache_create = usage.cache_creation_input_tokens
-        cache_read = usage.cache_read_input_tokens
+        # ── 2. Cache 字段审计（字段已在第 1 步前提取）────────────
         has_cache = cache_create > 0 or cache_read > 0
 
         if has_cache:
             precision_detail_parts.append(f"cache_create={cache_create}")
             precision_detail_parts.append(f"cache_read={cache_read}")
-
-            # 本次请求未启用缓存，但 API 返回了 cache 字段 → 可能虚报
-            issues.append(Issue(
-                level=IssueLevel.MAJOR,
-                message=f"非缓存请求却返回 cache 字段（creation={cache_create}, read={cache_read}），可能虚报缓存计费",
-                detector_name=self.name,
-            ))
-            score -= 30
+            # v3.0.4: 区分两种场景，避免与固定开销披露自相矛盾：
+            #   a) 缓存字段本身成规模（≥1000 tokens，如神秘cc input≈cache_read
+            #      47.9k、Kiro 类 input 小但 read 45k）→ 上游带缓存系统提示的
+            #      透传，字段有来源，不判"可能虚报"
+            #   b) input 小且 cache 字段也微小/无来源 → 才可疑
+            coherent_with_overhead = (cache_create + cache_read) >= 1000
+            if coherent_with_overhead:
+                issues.append(Issue(
+                    level=IssueLevel.OK,
+                    message=f"cache 字段与固定开销相干（read={cache_read}, create={cache_create}），"
+                            f"为上游系统提示走缓存的特征，非缓存计费造假",
+                    detector_name=self.name,
+                ))
+            else:
+                # 本次请求未启用缓存，但 API 返回了 cache 字段 → 可能虚报
+                issues.append(Issue(
+                    level=IssueLevel.MAJOR,
+                    message=f"非缓存请求却返回 cache 字段（creation={cache_create}, read={cache_read}），可能虚报缓存计费",
+                    detector_name=self.name,
+                ))
+                score -= 30
         else:
             precision_detail_parts.append("cache=无")
             # 正常：无缓存请求不应有 cache 字段
@@ -183,7 +220,14 @@ class BillingIntegrityDetector(ActiveDetector):
             precision_detail_parts.append(f"output_deviation={output_deviation:+.1f}%")
 
             # v2.5: 放宽阈值，output token 更难准确估算（取决于生成长度）
-            if abs(output_deviation) > 100:
+            # v3.0.4: 小分母护栏——估算 <20 tokens 时百分比噪声过大，只披露不扣分
+            if estimated_output < 20:
+                issues.append(Issue(
+                    level=IssueLevel.OK,
+                    message=f"output_tokens 上报 {reported_output}（估算基数过小，百分比无统计意义，不扣分）",
+                    detector_name=self.name,
+                ))
+            elif abs(output_deviation) > 100:
                 score -= 15
                 issues.append(Issue(
                     level=IssueLevel.MINOR,
@@ -212,10 +256,12 @@ class BillingIntegrityDetector(ActiveDetector):
 
         # 仅作为参考信息，大幅放宽阈值
         if multiplier > 3.0:
-            # 超过 3 倍才提示，且不作为负面评分
+            # v3.0.4: 纯披露不扣分——倍率大小由固定开销披露解释，倍率本身
+            # 不衡量"多收你多少钱"（真实费用 = 官方价 × 上报 × 倍率系数）
             issues.append(Issue(
                 level=IssueLevel.MINOR,
-                message=f"上报/估算比值 {multiplier:.1f}x。注意：估算仅供参考，中转站可能包含系统消息、工具调用等额外 token",
+                message=f"上报/估算比值 {multiplier:.1f}x（仅披露不扣分）。注意：估算仅供参考，"
+                        f"中转站可能包含系统消息、工具调用等额外 token",
                 detector_name=self.name,
             ))
         else:
