@@ -810,6 +810,14 @@ return;
   }
 
   function renderDim(label, score) {
+    // v3.0.3: null = 该维度无有效检测项 → 显示 N/A 而非误导性的 0.0
+    if (score === null || score === undefined) {
+      return `<div class="dim-card">
+        <div class="dim-label">${escapeHtml(label)}</div>
+        <div class="dim-score" style="color:var(--txt-3)">N/A</div>
+        <div class="dim-bar"><div class="dim-fill" style="width:0;background:var(--txt-4)"></div></div>
+      </div>`;
+    }
     const co = score >= 85 ? 'var(--green)' : score >= 70 ? 'var(--blue)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
     return `<div class="dim-card">
       <div class="dim-label">${escapeHtml(label)}</div>

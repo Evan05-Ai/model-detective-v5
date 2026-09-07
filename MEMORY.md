@@ -1,11 +1,40 @@
 # Model Detective — 项目记忆文件
 
 > 最后更新: 2026-09-07 (UTC+8)
-> 当前版本: v3.0.2 后端（降本增效纯赚批次）+ Cosmic Galaxy v5.1 前端（资产 COSMIC_V300_20260906）
+> 当前版本: v3.0.3 后端（预算信封化：检测深度不可被中转站单方面关停）+ Cosmic Galaxy v5.1 前端（资产 COSMIC_V300_20260906）
 > 部署状态: Cloudflare Tunnel ✅ (detect.model-detective.online，隧道 model-detective-v2)
 > 技术栈: Python Flask + Vanilla JS + HTML/CSS
 > GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
-> 测试基线: pytest 114/114
+> 测试基线: pytest 115/115
+
+---
+
+## 2026-09-07 v3.0.3 预算信封化（重要，用户线上二轮实测驱动）
+
+### 现象（用户截图，beiluoxi.top，standard 模式）
+v3.0.1 修复后重测，又一个站出现 6 项 SKIP（已用 143858/100000）。与上次不同：integrity 仅观察 **3 次请求**——该站把每请求 ~4.8 万 tokens 的自身系统提示开销上报为**普通 input/cache_creation**（非 cache_read），v3.0.1 的"剔除 cache_read"口径没盖住。上一批修复全部验证通过：thinking_signature 100 分、cf-ray 不再误判、message_id 被动检测 3 样本、探活去重生效。
+
+### 根因（设计层）
+预算基于"中转站上报的用量"，而上报数字是**被检测方单方面控制**的——反欺诈工具的检测深度可以被被检测方通过虚报任意关停。v3.0.1 只是修了一个特例（cache_read），没修本质。
+
+### 修复：预算口径彻底与上报解耦
+1. **请求信封计量**（`base_client._add_envelope`）：预算唯一口径 = 我方实际发出的请求 payload 的 token 估算（`count_tokens(json(payload))`，含 tools/system 等全部内容）。三个客户端共 6 个请求方法全部接入。**中转站上报什么数字都与预算无关。**
+2. **费用兜底取代 token 倍数止损**（`modes.get_wallet_limit` + `get_billable_cost_usd`）：上报数字仅用于按官方价+真实折扣折算预估费用（Anthropic: input + 1.25×cache_creation + 0.1×cache_read；OpenAI: prompt − 0.5×cached），超过模式钱包上限（quick $5 / standard $15 / full $30）才中止剩余组。**阈值原则"完成优先、披露成本"**：诚实站 ~$0.1、Kiro 类 ~$1-2、beiluoxi 类+opus ~$3.6 都应完整出报告，由披露说话而非砍检测；只有上报离谱（>$15）才止损。
+3. **单请求固定开销披露**（anthropic billing_integrity）：我方 prompt ~15 tokens，上报 input 与估算差额 >1000 时输出"计费公平性提示"（该站每请求固定开销 N tokens，会计入你的每一次对话）。把成本问题转化为检测价值。
+4. **三维分数支持 None**：维度内无有效检测项时（全 SKIP）输出 null，前端显示 **N/A**——修复截图中"能力 0.0"的误导（无数据≠0 分）。scorer `_category_score` + models Optional + app.py `_round_or_none` + app.js renderDim。
+5. **费用估算口径修正**：`get_cost_summary.estimated_cost_usd` 从"60/40 拍脑门分摊"改为真实输入/输出分别计价。
+
+### 兼容与清理
+- `TokenUsage.budget_tokens`/`effective_budget_tokens` 死字段删除（v3.0.1 遗留）；`test_budget_v3.py` 全部重写为信封语义（RelayClient 复用真实 BaseProtocolClient 记账），并新增：信封免疫上报、费用折扣公式、两类站全量出报告、离谱上报触发钱包止损、维度 None 语义、序列化 null 安全
+- Gemini/OpenAI 客户端信封接入（此前只覆盖 Anthropic）
+
+### 验证
+- pytest 115/115 ×3 轮全绿；node --check 通过；烟测 /health v3.0.3-web + 首页/测评页 200
+- **预期效果（beiluoxi 场景）**：13 项检测器全部运行（不再 SKIP），报告完整，含"单请求固定开销 ≈4.8 万 tokens"披露；报告头 Tokens 显示上报总量 ~19 万（与站方面板对账一致）
+
+### 教训（防回归）
+- **反欺诈工具的任何"深度"参数都不能依赖被检测方提供的数据**。上报口径只能用于"对对方不利"的方向（披露其虚增），不能用于"对自己不利"的方向（决定自己测多少）
+- 修 bug 要修本质类而非实例：v3.0.1 修 cache_read 是实例，beiluoxi 用 plain input 就绕过了；v3.0.3 把"上报"整体请出预算才闭环
 
 ---
 

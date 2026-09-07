@@ -3,13 +3,17 @@
 > 创建时间: 2026-09-01 (UTC+8) · 最后更新: 2026-09-07 (UTC+8)
 > 项目路径: D:\Ai工作\model-detective
 > GitHub: git@github.com:Evan05-Ai/model-detective-v5.git (分支: master)
-> 当前版本: 后端 v3.0.2 + 前端 Cosmic Galaxy v5.1（资产版本 COSMIC_V300_20260906）
+> 当前版本: 后端 v3.0.3 + 前端 Cosmic Galaxy v5.1（资产版本 COSMIC_V300_20260906）
 > 部署: Cloudflare Tunnel → https://detect.model-detective.online
-> 最新基线: pytest 114/114 全绿；v3.0.1 预算修复 + v3.0.2 降本批次已提交（服务待下次重启一并生效）
+> 最新基线: pytest 115/115 全绿；v3.0.1/3.0.2/3.0.3 三批已提交（服务待下次重启一并生效）
 
 ---
 
 ## 一、当前状态总览
+
+### 1.0c v3.0.3 预算信封化（2026-09-07，用户二轮实测驱动）
+
+beiluoxi.top 用 plain input（非 cache_read）上报 ~4.8万 tokens/请求再次冲爆预算——证明 v3.0.1 只修了实例没修本质：**预算依赖被检测方单方面提供的数字，检测深度可被对方任意关停**。v3.0.3 彻底解耦：预算唯一口径改为"请求信封"（我方 payload 估算，`_add_envelope`）；上报数字仅用于费用兜底（钱包上限 quick $5/std $15/full $30，完成优先原则）与"单请求固定开销"计费公平性披露；三维分数支持 None（全 SKIP 维度显示 N/A 而非误导性 0.0）。测试 114→115。详见 MEMORY.md。
 
 ### 1.0b v3.0.2 降本增效"纯赚批次"（2026-09-07）
 

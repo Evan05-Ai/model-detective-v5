@@ -103,21 +103,21 @@ class OpenAIClient(BaseProtocolClient):
 
     @staticmethod
     def _parse_usage(raw_usage: dict) -> "TokenUsage":
-        """v3.0.1: 统一解析 OpenAI usage，预算口径剔除缓存 token。
+        """v3.0.3: 统一解析 OpenAI usage。
 
-        OpenAI 的 usage.total_tokens 包含 cached prompt tokens，
-        缓存读取计价约 10%，不应按全价计入检测预算。
+        cost_input_equiv = prompt - 0.5×cached（OpenAI 缓存命中输入半价），
+        仅用于费用兜底估算；检测预算与此无关（信封计量）。
         """
         raw_usage = raw_usage or {}
         ptd = raw_usage.get("prompt_tokens_details") or {}
         cached = ptd.get("cached_tokens", 0) or 0
-        total = raw_usage.get("total_tokens", 0)
+        prompt = raw_usage.get("prompt_tokens", 0)
         return TokenUsage(
-            prompt_tokens=raw_usage.get("prompt_tokens", 0),
+            prompt_tokens=prompt,
             completion_tokens=raw_usage.get("completion_tokens", 0),
-            total_tokens=total,
+            total_tokens=raw_usage.get("total_tokens", 0),
             cached_tokens=cached,
-            budget_tokens=max(0, total - cached),
+            cost_input_equiv=prompt - 0.5 * cached,
         )
 
     def chat(
@@ -142,6 +142,10 @@ class OpenAIClient(BaseProtocolClient):
             payload["response_format"] = response_format
 
         url = self._get_chat_url()
+
+        # v3.0.3: 信封计量（payload 含 tools/response_format，中转站注入的
+        # 工具定义开销属于我方请求的一部分，理应计入）
+        self._add_envelope(payload)
 
         try:
             resp = request_with_retry(
@@ -247,6 +251,9 @@ class OpenAIClient(BaseProtocolClient):
         }
 
         url = self._get_chat_url()
+
+        # v3.0.3: 信封计量
+        self._add_envelope(payload)
 
         try:
             resp = self.session.post(

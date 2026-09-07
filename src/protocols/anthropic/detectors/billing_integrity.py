@@ -91,7 +91,23 @@ class BillingIntegrityDetector(ActiveDetector):
         # ── 1. Input Token 合理性检查 ─────────────────────────
         reported_input = usage.prompt_tokens
         estimated_input = _estimate_tokens(_KNOWN_PROMPT)
-        
+
+        # v3.0.3: 单请求固定开销披露（计费公平性发现）。
+        # 我方 prompt 仅 ~15 tokens；上报 input 与估算的差额即中转站注入的
+        # 系统提示/缓存写入等固定开销——它对每一次对话都照此计费。
+        fixed_overhead = reported_input - estimated_input
+        if fixed_overhead > 1000:
+            issues.append(Issue(
+                level=IssueLevel.OK,
+                message=(
+                    f"计费公平性提示：我方本次请求仅约 {estimated_input} tokens，"
+                    f"但该站上报输入 {reported_input} tokens——单请求固定开销 ≈{fixed_overhead} "
+                    f"tokens（通常为中转站注入的系统提示或缓存写入，写入按 1.25 倍计费）。"
+                    f"该开销会计入你的每一次对话，长期使用成本需自行评估。"
+                ),
+                detector_name=self.name,
+            ))
+
         # 计算偏差（仅作参考）
         if estimated_input > 0:
             input_deviation = (reported_input - estimated_input) / estimated_input * 100

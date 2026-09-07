@@ -9,11 +9,25 @@ full:     ~13+ 请求, ~70s+ - 全部检测器 + 可选长上下文
 from .models import RunMode
 
 
-# 各模式 token 预算上限
+# 各模式 token 预算上限（v3.0.3 起为"请求信封"口径：按我方实际发出的
+# 请求内容估算，不受中转站上报数字影响，详见 base_client._add_envelope）
 TOKEN_BUDGETS = {
-    RunMode.QUICK: 5_000,      # v2.8: 提升至 5,000
-    RunMode.STANDARD: 100_000,  # v2.8: 提升至 100,000，避免预算耗尽
-    RunMode.FULL: 200_000,     # v2.8: 提升至 200,000
+    RunMode.QUICK: 5_000,
+    RunMode.STANDARD: 100_000,
+    RunMode.FULL: 200_000,
+}
+
+# v3.0.3: 钱包费用上限（USD）——按中转站上报口径 + 官方价折算的预估费用
+# 兜底。设计原则"完成优先、披露成本"：诚实中转站一次 Standard 检测约
+# $0.1，缓存密集中转站（Kiro 类）约 $1-2，固定开销大的站（beiluoxi 类，
+# ~48k tokens/请求 × opus 定价）约 $10-11——这些都应该完整出报告，让
+# billing_integrity 的"单请求固定开销"披露来说话，而不是半途砍掉检测。
+# 只有上报离谱（>$15-20）才中止。用户若在乎成本，报告里的费用数字和
+# 披露就是决策依据。
+WALLET_COST_LIMITS = {
+    RunMode.QUICK: 5.0,
+    RunMode.STANDARD: 15.0,
+    RunMode.FULL: 30.0,
 }
 
 # 各模式包含的检测器（按协议分组后由各协议 config 定义具体列表）
@@ -27,6 +41,11 @@ MODE_DETECTOR_LEVELS = {
 def get_token_budget(mode: RunMode) -> int:
     """获取模式的 token 预算上限"""
     return TOKEN_BUDGETS.get(mode, TOKEN_BUDGETS[RunMode.STANDARD])
+
+
+def get_wallet_limit(mode: RunMode) -> float:
+    """获取模式的预估费用止损上限（USD）"""
+    return WALLET_COST_LIMITS.get(mode, WALLET_COST_LIMITS[RunMode.STANDARD])
 
 
 def should_run_detector(detector_modes: list[str], mode: RunMode) -> bool:

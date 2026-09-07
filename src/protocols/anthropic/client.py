@@ -130,6 +130,8 @@ class AnthropicClient(BaseProtocolClient):
 
         url = self._get_messages_url()
 
+        # v3.0.3: 按我方请求 payload 估算 token，计入预算口径（信封计量）
+        self._add_envelope(payload)
 
         try:
             resp = request_with_retry(
@@ -171,9 +173,8 @@ class AnthropicClient(BaseProtocolClient):
                     total_tokens=(input_t + output_t + cache_creation_t + cache_read_t),
                     cache_creation_input_tokens=cache_creation_t,
                     cache_read_input_tokens=cache_read_t,
-                    # v3.0.1: 预算口径剔除缓存读取（计价 ~10%，Kiro 类中转站
-                    # 每次响应上报数万 cache_read，按全价计入会冲爆检测预算）
-                    budget_tokens=input_t + output_t + cache_creation_t,
+                    # v3.0.3: 全价输入当量（写入 1.25x，读取 0.1x）
+                    cost_input_equiv=input_t + 1.25 * cache_creation_t + 0.1 * cache_read_t,
                 )
                 self._record_usage(usage)
 
@@ -218,7 +219,7 @@ class AnthropicClient(BaseProtocolClient):
                         total_tokens=(input_t + output_t + cache_creation_t + cache_read_t),
                         cache_creation_input_tokens=cache_creation_t,
                         cache_read_input_tokens=cache_read_t,
-                        budget_tokens=input_t + output_t + cache_creation_t,
+                        cost_input_equiv=input_t + 1.25 * cache_creation_t + 0.1 * cache_read_t,
                     )
                     self._record_usage(usage)
 
@@ -297,6 +298,9 @@ class AnthropicClient(BaseProtocolClient):
 
         url = self._get_messages_url()
 
+        # v3.0.3: 信封计量
+        self._add_envelope(payload)
+
         try:
             resp = self.session.post(
                 url,
@@ -327,7 +331,7 @@ class AnthropicClient(BaseProtocolClient):
                     total_tokens=(s_in + s_out + s_cc + s_cr),
                     cache_creation_input_tokens=s_cc,
                     cache_read_input_tokens=s_cr,
-                    budget_tokens=s_in + s_out + s_cc,
+                    cost_input_equiv=s_in + 1.25 * s_cc + 0.1 * s_cr,
                 )
             self._record_usage(usage)
 

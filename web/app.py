@@ -776,6 +776,10 @@ def _serialize_report(report, protocol, degraded, degrade_reason, base_url: str 
     from src.core.scorer import calculate_confidence_stats
     confidence_stats = calculate_confidence_stats(report.results)
 
+    # v3.0.3: 三维分数支持 None（该维度无有效检测项时），前端显示 N/A
+    def _round_or_none(v):
+        return round(v, 1) if v is not None else None
+
     return {
         "model": report.model,
         "base_url": base_url,  # v2.5: 添加中转站网址
@@ -787,9 +791,9 @@ def _serialize_report(report, protocol, degraded, degrade_reason, base_url: str 
         "verdict": verdict_key,
         "verdict_label": verdict_info["label"],
         "verdict_cn": verdict_info["cn"],
-        "authenticity_score": round(report.authenticity_score, 1),
-        "capability_score": round(report.capability_score, 1),
-        "compliance_score": round(report.compliance_score, 1),
+        "authenticity_score": _round_or_none(report.authenticity_score),
+        "capability_score": _round_or_none(report.capability_score),
+        "compliance_score": _round_or_none(report.compliance_score),
         "total_tokens": report.total_tokens,
         "total_requests": report.total_requests,
         "estimated_cost_usd": round(report.estimated_cost_usd, 4),
@@ -1085,7 +1089,7 @@ def evaluation():
 
 @app.get("/health")
 def health():
-    return jsonify({"ok": True, "version": "3.0.2-web"})
+    return jsonify({"ok": True, "version": "3.0.3-web"})
 
 # ── Entry point ──────────────────────────────────────────────
 

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""v3.0.1 预算口径修复测试：缓存读取不再冲爆检测预算
+"""v3.0.3 预算信封化测试：检测深度不再受中转站上报数字影响
 
-复现线上 bug：Kiro 类中转站每次响应上报 ~45k cache_read_input_tokens
-（上游系统提示走缓存），旧代码按全价计入 Runner 预算 → 2-3 个请求就
-"耗尽" 100k 预算，10/13 检测器被跳过（截图证据：已用 239583/100000）。
+复现两类线上实测场景：
+- Kiro 类（09-06）：每请求上报 ~45k cache_read_input_tokens
+- beiluoxi 类（09-07）：每请求上报 ~48k 普通 input/cache_creation
+两类站在旧预算模型下都导致 2-3 个请求即"耗尽"100k 预算、10/13 检测器
+SKIP。v3.0.3 起预算唯一口径是"请求信封"（我方 payload 估算），上报
+数字仅用于展示与费用兜底。
 """
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -11,42 +14,86 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.core.detector_base import ActiveDetector
 from src.core.models import CheckResultV2, DetectorCategory, RunMode, Protocol
 from src.core.runner import Runner
-from src.protocols.base_client import TokenUsage
-from src.protocols.anthropic.client import AnthropicClient
+from src.core.scorer import calculate_scores
+from src.protocols.base_client import TokenUsage, BaseProtocolClient, ProtocolResponse
 from src.protocols.openai.client import OpenAIClient
+from src.protocols.anthropic.client import AnthropicClient
 
 
-class CountingClient:
-    """模拟 Kiro 类中转站客户端：每次请求上报巨额 cache_read"""
+# ==================== 信封计量 ====================
 
-    def __init__(self, per_request_total, per_request_budget):
+def test_envelope_is_budget_and_reported_is_not():
+    """预算口径 = 请求信封；上报数字（无论多大）不入预算"""
+    c = AnthropicClient("https://relay.test", "sk-test-123456", "claude-opus-4-5")
+    payload = {"model": "claude-opus-4-5", "max_tokens": 100,
+               "messages": [{"role": "user", "content": "Hi"}]}
+    est = c._add_envelope(payload)
+    assert 5 <= est <= 200, f"小 payload 信封应在合理范围，实际 {est}"
+
+    # beiluoxi 类上报：普通 input 虚增 4.8 万
+    c._record_usage(TokenUsage(prompt_tokens=48000, completion_tokens=50,
+                               total_tokens=48050, cost_input_equiv=48000))
+    # Kiro 类上报：cache_read 4.5 万
+    c._record_usage(TokenUsage(prompt_tokens=200, completion_tokens=50,
+                               total_tokens=45250, cache_read_input_tokens=45000,
+                               cost_input_equiv=200 + 0.1 * 45000))
+
+    # 预算 = 信封（仅 1 个小请求），与上报的 9 万+ 无关
+    assert c.get_budget_tokens() == est
+    # 展示口径 = 上报总量
+    assert c.get_cost_summary()["total_tokens"] == 48050 + 45250
+    print("  [OK] envelope budget immune to reported inflation")
+
+
+def test_billable_cost_discounts():
+    """费用兜底口径：缓存写入 1.25x、读取 0.1x、OpenAI 命中半价"""
+    # Anthropic: input 200 + 1.25×1000(cc) + 0.1×45000(cr) = 5950 当量
+    c = AnthropicClient("https://relay.test", "sk-test-123456", "gpt-4o")  # 用已知价模型
+    c._record_usage(TokenUsage(prompt_tokens=200, completion_tokens=0, total_tokens=46200,
+                               cache_creation_input_tokens=1000,
+                               cache_read_input_tokens=45000,
+                               cost_input_equiv=200 + 1.25 * 1000 + 0.1 * 45000))
+    # gpt-4o input $2.5/M → 5950×2.5/1M ≈ $0.0149
+    assert abs(c.get_billable_cost_usd() - 5950 * 2.5 / 1_000_000) < 1e-9
+
+    # OpenAI: prompt 1000, cached 900 → equiv 550
+    u = OpenAIClient._parse_usage({"prompt_tokens": 1000, "completion_tokens": 0,
+                                   "total_tokens": 1000,
+                                   "prompt_tokens_details": {"cached_tokens": 900}})
+    assert u.cached_tokens == 900
+    assert abs(u.cost_input_equiv - 550.0) < 1e-9
+    u2 = OpenAIClient._parse_usage({"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
+    assert abs(u2.cost_input_equiv - 10.0) < 1e-9
+    print("  [OK] billable cost discount formulas")
+
+
+# ==================== Runner 集成（复现线上两类站） ====================
+
+class RelayClient(BaseProtocolClient):
+    """模拟中转站：复用真实信封/费用记账，messages() 按场景上报用量"""
+
+    def __init__(self, scenario: str):
+        super().__init__("https://relay.test", "sk-test-123456", "gpt-4o")
+        self.scenario = scenario
         self.calls = 0
-        self._total = 0
-        self._budget = 0
-        self.per_request_total = per_request_total
-        self.per_request_budget = per_request_budget
 
     def messages(self, **kwargs):
+        self._add_envelope({"model": self.model, "messages": kwargs.get("messages", []),
+                            "max_tokens": kwargs.get("max_tokens", 100)})
         self.calls += 1
-        self._total += self.per_request_total
-        self._budget += self.per_request_budget
-        from src.protocols.base_client import ProtocolResponse
-        return ProtocolResponse(
-            success=True, content="ok", model="claude-opus-5", headers={},
-            usage=TokenUsage(
-                prompt_tokens=200, completion_tokens=50,
-                total_tokens=self.per_request_total,
-                cache_read_input_tokens=self.per_request_total - 250,
-                budget_tokens=self.per_request_budget,
-            ),
-        )
-
-    def get_budget_tokens(self):
-        return self._budget
-
-    def get_cost_summary(self):
-        return {"total_tokens": self._total, "budget_tokens": self._budget,
-                "total_requests": self.calls, "estimated_cost_usd": 0.01}
+        if self.scenario == "kiro_cache":
+            usage = TokenUsage(prompt_tokens=200, completion_tokens=50, total_tokens=45250,
+                               cache_read_input_tokens=45000,
+                               cost_input_equiv=200 + 0.1 * 45000)
+        elif self.scenario == "overhead_plain":
+            usage = TokenUsage(prompt_tokens=48000, completion_tokens=50, total_tokens=48050,
+                               cost_input_equiv=48000)
+        else:  # honest
+            usage = TokenUsage(prompt_tokens=60, completion_tokens=40, total_tokens=100,
+                               cost_input_equiv=60)
+        self._record_usage(usage)
+        return ProtocolResponse(success=True, content="ok", model=self.model,
+                                headers={}, usage=usage)
 
 
 class TinyDetector(ActiveDetector):
@@ -55,7 +102,7 @@ class TinyDetector(ActiveDetector):
     modes = ["quick", "standard", "full"]
     estimated_tokens = 600
 
-    def __init__(self, name, priority_group=1):
+    def __init__(self, name):
         self.name = name
         self.category = DetectorCategory.AUTHENTICITY
 
@@ -65,165 +112,121 @@ class TinyDetector(ActiveDetector):
                              score=90, weight=self.weight, cost_tokens=0)
 
 
-def _make_runner(client, detectors, budget_mode=RunMode.STANDARD):
-    return Runner(
-        client=client,
-        active_detectors=detectors,
-        passive_detectors=[],
-        protocol=Protocol.ANTHROPIC,
-        model="claude-opus-5",
-        mode=budget_mode,
-    )
+def _run(client, detectors, mode=RunMode.STANDARD):
+    return Runner(client=client, active_detectors=detectors, passive_detectors=[],
+                  protocol=Protocol.ANTHROPIC, model=client.model, mode=mode).run()
 
 
-def test_token_usage_budget_fallback():
-    """budget_tokens 未设置时回退 total_tokens"""
-    u = TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
-    assert u.effective_budget_tokens == 15
-    u2 = TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=100,
-                    budget_tokens=15)
-    assert u2.effective_budget_tokens == 15
-    print("  [OK] TokenUsage budget fallback")
-
-
-def test_anthropic_record_usage_excludes_cache_read():
-    """AnthropicClient 预算计数器剔除 cache_read"""
-    c = AnthropicClient("https://example.com", "sk-test-123456", "claude-opus-5")
-    # Kiro 类响应：total 45250，其中 cache_read 45000
-    c._record_usage(TokenUsage(
-        prompt_tokens=200, completion_tokens=50, total_tokens=45250,
-        cache_read_input_tokens=45000, budget_tokens=250))
-    assert c.get_budget_tokens() == 250
-    # 未设置 budget_tokens 的旧式用法回退 total
-    c._record_usage(TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15))
-    assert c.get_budget_tokens() == 265
-    # 展示口径保持上报总量
-    assert c.get_cost_summary()["total_tokens"] == 45265
-    assert c.get_cost_summary()["budget_tokens"] == 265
-    print("  [OK] anthropic budget counter excludes cache_read")
-
-
-def test_openai_parse_usage_excludes_cached():
-    """OpenAI usage 解析：cached_tokens 从预算口径剔除"""
-    u = OpenAIClient._parse_usage({
-        "prompt_tokens": 1000, "completion_tokens": 50, "total_tokens": 1050,
-        "prompt_tokens_details": {"cached_tokens": 900},
-    })
-    assert u.cached_tokens == 900
-    assert u.total_tokens == 1050
-    assert u.budget_tokens == 150
-    u2 = OpenAIClient._parse_usage({"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
-    assert u2.budget_tokens == 15
-    print("  [OK] openai usage parse excludes cached tokens")
-
-
-def test_kiro_cache_relay_no_budget_skips():
-    """核心回归：cache_read 巨额上报不再导致检测器被预算跳过
-
-    旧代码：detector1 实际 45000 → detector2 后 90000 → detector3 起
-    全部 SKIP（截图中的 239583/100000）。
-    新代码：预算口径 250/请求 → 4 个检测器全部运行。
-    """
-    client = CountingClient(per_request_total=45000, per_request_budget=250)
-    detectors = [TinyDetector(f"det_{i}") for i in range(4)]
-    runner = _make_runner(client, detectors)
-    report = runner.run()
-
+def test_kiro_relay_full_report():
+    """Kiro 类站（45k cache_read/请求）：4 检测器全部运行，零 SKIP"""
+    client = RelayClient("kiro_cache")
+    report = _run(client, [TinyDetector(f"det_{i}") for i in range(4)])
     skips = [r for r in report.results if r.status == "skip"]
-    assert not skips, f"不应有 SKIP，实际: {[(r.name, r.details) for r in skips]}"
+    assert not skips, f"不应有 SKIP: {[(r.name, r.details) for r in skips]}"
     assert client.calls == 5  # 1 preflight + 4 detectors
-    assert report.total_tokens == 5 * 45000  # 展示口径为上报总量
-    print("  [OK] kiro cache relay: all detectors ran (no budget skips)")
+    print("  [OK] kiro relay: full report")
 
 
-def test_plain_inflation_blocked_per_detector():
-    """无缓存字段的纯虚增上报（120k/请求）：预检后单项预算检查即拦截，
-    后续检测器全部 SKIP 且消息含真实用量——钱包保护按预期工作"""
-    client = CountingClient(per_request_total=120000, per_request_budget=120000)
-    detectors = [TinyDetector("p1_a"), TinyDetector("p1_b")]
-    runner = _make_runner(client, detectors)
-    report = runner.run()
-    by_name = {r.name: r for r in report.results}
-    # 预检已用 120k > 预算 100k → 两个检测器都被单项检查拦截
-    assert by_name["p1_a"].status == "skip"
-    assert "Token 预算耗尽" in by_name["p1_a"].details
-    assert "120000" in by_name["p1_a"].details
-    # 除预检外不应再发任何请求
-    assert client.calls == 1
-    print("  [OK] plain inflation blocked at per-detector check")
+def test_overhead_relay_full_report():
+    """beiluoxi 类站（48k plain input/请求）：检测深度不受上报影响。
+
+    5 请求 × ~$0.12（gpt-4o 价）≈ $0.6 << $15 钱包上限 → 全跑完。
+    opus 定价下同场景约 $3.6，同样低于上限。
+    """
+    client = RelayClient("overhead_plain")
+    report = _run(client, [TinyDetector(f"det_{i}") for i in range(4)])
+    skips = [r for r in report.results if r.status == "skip"]
+    assert not skips, f"不应有 SKIP: {[(r.name, r.details) for r in skips]}"
+    # 费用披露仍按上报口径累计（preflight + 4 检测器 = 5 请求 × 48k）
+    assert client.get_cost_summary()["total_tokens"] == 5 * 48050
+    print("  [OK] overhead relay: full report, cost still tracked")
 
 
-def test_hard_stop_after_single_detector_overshoot():
-    """组级 3 倍费用保护：单检测器内部多次请求累积超 3 倍预算时，
-    后续优先级组被止损并给出明确消息"""
-    class BurstClient(CountingClient):
+def test_wallet_stop_on_absurd_reporting():
+    """上报离谱（费用超钱包上限）→ 剩余组止损并给出明确消息"""
+    class AbsurdRelay(RelayClient):
         def messages(self, **kwargs):
-            # 预检（第一次调用）消耗小，之后每次 90k
-            if self.calls == 0:
-                self.calls += 1
-                self._total += 1000
-                self._budget += 1000
-                from src.protocols.base_client import ProtocolResponse
-                return ProtocolResponse(success=True, content="ok", model="x",
-                                        headers={}, usage=TokenUsage(total_tokens=1000))
-            return super().messages(**kwargs)
+            self._add_envelope({"m": 1})
+            self.calls += 1
+            # 单请求 200 万 input ≈ $5 (gpt-4o) —— 2 个请求即超 QUICK $5 上限
+            usage = TokenUsage(prompt_tokens=2_000_000, completion_tokens=0,
+                               total_tokens=2_000_000, cost_input_equiv=2_000_000)
+            self._record_usage(usage)
+            return ProtocolResponse(success=True, content="ok", model=self.model,
+                                    headers={}, usage=usage)
 
-    class IdentityLikeDetector(ActiveDetector):
-        name = "identity"
-        category = DetectorCategory.AUTHENTICITY
-        weight = 0.1
-        modes = ["quick", "standard", "full"]
-        estimated_tokens = 600
-
-        def run(self, client) -> CheckResultV2:
-            for _ in range(4):   # 4 次请求 × 90k = 360k
-                client.messages(detector_name=self.name)
-            return CheckResultV2(name=self.name, category=self.category,
-                                 score=90, weight=self.weight)
-
-    client = BurstClient(per_request_total=90000, per_request_budget=90000)
-    runner = _make_runner(client, [IdentityLikeDetector(), TinyDetector("p2_a")])
     from src.core.runner import DETECTOR_PRIORITY
-    DETECTOR_PRIORITY["p2_a"] = 2
+    client = AbsurdRelay("honest")
+    d1, d2 = TinyDetector("w1_a"), TinyDetector("w2_a")
+    DETECTOR_PRIORITY["w1_a"] = 1
+    DETECTOR_PRIORITY["w2_a"] = 2
     try:
-        report = runner.run()
+        report = _run(client, [d1, d2], mode=RunMode.QUICK)  # QUICK 钱包 $5
     finally:
-        DETECTOR_PRIORITY.pop("p2_a", None)
-
-    by_name = {r.name: r for r in report.results}
-    # P1 后预算口径 = 1k + 4×90k = 361k > 3×100k → P2 组被止损
-    assert by_name["p2_a"].status == "skip"
-    assert "费用保护" in by_name["p2_a"].details
-    print("  [OK] group-level 3x hard stop fires with clear message")
+        DETECTOR_PRIORITY.pop("w1_a", None)
+        DETECTOR_PRIORITY.pop("w2_a", None)
+    by = {r.name: r for r in report.results}
+    assert by["w1_a"].status == "pass"
+    assert by["w2_a"].status == "skip"
+    assert "费用保护" in by["w2_a"].details
+    print("  [OK] wallet stop fires on absurd reporting")
 
 
 def test_reservations_released_after_run():
-    """检测器完成后预估占用必须清零"""
-    client = CountingClient(per_request_total=1000, per_request_budget=1000)
-    detectors = [TinyDetector(f"det_{i}") for i in range(3)]
-    runner = _make_runner(client, detectors)
-    runner.run()
-    assert runner._reserved_tokens == 0, "预估占用未释放"
-    print("  [OK] reservations released after run")
+    client = RelayClient("honest")
+    runner_detectors = [TinyDetector(f"det_{i}") for i in range(3)]
+    r = Runner(client=client, active_detectors=runner_detectors, passive_detectors=[],
+               protocol=Protocol.ANTHROPIC, model=client.model, mode=RunMode.STANDARD)
+    r.run()
+    assert r._reserved_tokens == 0
+    print("  [OK] reservations released")
 
 
-def test_budget_exhaustion_skip_message():
-    """预算真正耗尽时仍有清晰跳过消息（含实际用量）"""
-    client = CountingClient(per_request_total=1000, per_request_budget=99000)
-    d1 = TinyDetector("big_a")   # preflight 99k + detector 请求 99k → 接近爆
-    d2 = TinyDetector("big_b")
-    runner = _make_runner(client, [d1, d2])
-    report = runner.run()
-    statuses = {r.name: r.status for r in report.results}
-    # preflight(99k) + big_a 请求(99k) → big_b 检查时 used 已 >= 198k → skip
-    assert statuses.get("big_b") == "skip"
-    details = next(r.details for r in report.results if r.name == "big_b")
-    assert "Token 预算耗尽" in details
-    print("  [OK] budget exhaustion skip message present")
+# ==================== 维度分数 None 语义 ====================
+
+def test_dimension_scores_none_when_no_effective():
+    """维度内全部 skip 时该维度分数为 None（无数据 ≠ 0 分）"""
+    skipped = CheckResultV2(name="fn", category=DetectorCategory.CAPABILITY,
+                            score=0, weight=0.1, status="skip")
+    auth = CheckResultV2(name="id", category=DetectorCategory.AUTHENTICITY,
+                         score=90, weight=0.1, status="pass")
+    s = calculate_scores([skipped, auth])
+    assert s["capability_score"] is None
+    assert s["authenticity_score"] == 90.0
+    assert s["total_score"] > 0
+    print("  [OK] empty dimension -> None (not 0.0)")
+
+
+def test_dimension_scores_normal_path_unchanged():
+    a = CheckResultV2(name="id", category=DetectorCategory.AUTHENTICITY,
+                      score=90, weight=1.0, status="pass")
+    c = CheckResultV2(name="fn", category=DetectorCategory.CAPABILITY,
+                      score=50, weight=1.0, status="pass")
+    s = calculate_scores([a, c])
+    assert s["authenticity_score"] == 90.0
+    assert s["capability_score"] == 50.0
+    print("  [OK] normal dimension scoring unchanged")
+
+
+def test_serialize_none_scores_json_safe():
+    """_serialize_report 对 None 维度分输出 null（前端 N/A）"""
+    from web.app import _serialize_report
+    from src.core.models import DetectionReport, Verdict
+    report = DetectionReport(
+        model="m", protocol=Protocol.ANTHROPIC, mode="standard", degraded=False,
+        results=[], total_score=70.0, verdict=Verdict.PASSED,
+        authenticity_score=70.0, capability_score=None, compliance_score=None,
+        total_tokens=0, total_requests=0, estimated_cost_usd=0.0, has_critical=False,
+    )
+    import json
+    d = _serialize_report(report, Protocol.ANTHROPIC, False, "", "https://x")
+    assert d["capability_score"] is None
+    json.dumps(d)  # 不抛异常
+    print("  [OK] serialize None scores -> JSON null")
 
 
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
             fn()
-    print("\nAll v3.0.1 budget tests passed!")
+    print("\nAll v3.0.3 budget/envelope tests passed!")

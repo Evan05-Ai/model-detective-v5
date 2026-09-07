@@ -32,7 +32,7 @@ from typing import Optional
 
 from .models import CheckResultV2, RunMode, IssueLevel, Issue, Protocol
 from .detector_base import ActiveDetector, PassiveDetector
-from .modes import get_token_budget, should_run_detector
+from .modes import get_token_budget, get_wallet_limit, should_run_detector
 from .scorer import build_report
 
 
@@ -70,11 +70,6 @@ DEFAULT_PRIORITY = 2
 
 # 早终止预算阈值
 EARLY_TERMINAL_BUDGET_THRESHOLD = 0.30  # 预算剩余 < 30% 时触发早终止
-
-# v3.0.1: 费用保护硬止损倍数。实际上报用量（预算口径）达到预算的 3 倍时，
-# 中止剩余检测组。正常检测器请求极小（prompt <200 tok, max_tokens ≤1500），
-# 触发该止损只可能是中转站上报异常巨大的用量（ plain input 虚增等）。
-HARD_STOP_BUDGET_MULTIPLIER = 3
 
 
 class Runner:
@@ -149,14 +144,17 @@ class Runner:
                 has_critical = any(r.has_critical for r in results)
                 budget_remaining_pct = self._budget_remaining_pct()
 
-                # v3.0.1: 费用保护硬止损——实际上报用量异常巨大时中止剩余检测
-                used_now = self._budget_used()
-                if used_now > self._token_budget * HARD_STOP_BUDGET_MULTIPLIER:
+                # v3.0.3: 费用兜底——按中转站上报口径折算的预估费用超过
+                # 模式钱包上限时中止剩余检测。预算本身已改用请求信封
+                # （不受上报影响），此兜底仅防"上报离谱且照单收费"的极端站。
+                billable = self._billable_cost()
+                wallet_limit = get_wallet_limit(self.mode)
+                if billable > wallet_limit:
                     results.extend(self._skip_detectors(
                         detectors,
-                        f"费用保护：中转站上报用量异常（预算口径已用 {used_now}，"
-                        f"达预算 {self._token_budget} 的 {used_now / self._token_budget:.1f} 倍），"
-                        f"中止剩余检测。该中转站单次请求 token 消耗异常巨大，请结合计费审计结果警惕。"
+                        f"费用保护：按该中转站上报口径估算已产生约 ${billable:.2f} "
+                        f"费用，超过 {self.mode.value} 模式钱包上限 ${wallet_limit:.0f}，"
+                        f"中止剩余检测。该站单请求上报用量异常巨大，请结合计费审计结果警惕。"
                     ))
                     continue
 
@@ -315,13 +313,18 @@ class Runner:
     # ============================================================
 
     def _budget_used(self) -> int:
-        """当前已消耗预算 = 客户端实际计量（预算口径）+ 运行中检测器的预估占用。
+        """当前已消耗预算 = 客户端信封计量（我方请求估算）+ 运行中检测器的预估占用。
 
         需在 self._budget_lock（RLock，可重入）内调用或自行加锁。
         """
         getter = getattr(self.client, "get_budget_tokens", None)
         actual = getter() if callable(getter) else 0
         return actual + self._reserved_tokens
+
+    def _billable_cost(self) -> float:
+        """按中转站上报口径折算的预估费用（费用兜底用；客户端不支持时返回 0）"""
+        getter = getattr(self.client, "get_billable_cost_usd", None)
+        return getter() if callable(getter) else 0.0
 
     def _budget_used_safe(self) -> int:
         with self._budget_lock:

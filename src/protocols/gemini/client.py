@@ -54,6 +54,9 @@ class GeminiClient(BaseProtocolClient):
             payload["generationConfig"]["responseMimeType"] = "application/json"
             payload["generationConfig"]["responseSchema"] = response_schema
 
+        # v3.0.3: 信封计量
+        self._add_envelope(payload)
+
         try:
             resp = request_with_retry(
                 self.session, "POST",
@@ -116,6 +119,9 @@ class GeminiClient(BaseProtocolClient):
                 "temperature": temperature,
             },
         }
+
+        # v3.0.3: 信封计量
+        self._add_envelope(payload)
 
         try:
             resp = self.session.post(

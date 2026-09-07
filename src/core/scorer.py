@@ -136,9 +136,18 @@ def calculate_scores(results: list[CheckResultV2]) -> dict:
     has_critical = any(r.has_critical for r in results)
 
     total = _weighted_avg(results)
-    auth = _weighted_avg([r for r in results if r.category == DetectorCategory.AUTHENTICITY])
-    cap = _weighted_avg([r for r in results if r.category == DetectorCategory.CAPABILITY])
-    comp = _weighted_avg([r for r in results if r.category == DetectorCategory.COMPLIANCE])
+
+    # v3.0.3: 维度内无任何有效检测项时返回 None（无数据），
+    # 与"有检测项但得分 0"区分——前端显示 N/A 而非误导性的 0.0
+    def _category_score(category) -> Optional[float]:
+        subset = [r for r in results if r.category == category]
+        if not any(r.effective for r in subset):
+            return None
+        return _weighted_avg(subset)
+
+    auth = _category_score(DetectorCategory.AUTHENTICITY)
+    cap = _category_score(DetectorCategory.CAPABILITY)
+    comp = _category_score(DetectorCategory.COMPLIANCE)
 
     # v2.4 error 惩罚：当 error 检测器比例较高时，额外降低总分
     # 这确保即使个别检测器得分高，大量 error 也会拉低总分
@@ -148,12 +157,14 @@ def calculate_scores(results: list[CheckResultV2]) -> dict:
         error_ratio = error_count / len(non_skipped)
         if error_ratio >= 0.5:
             # error 率 >= 50% 时，按比例惩罚
-            # 例如 10/11 error → error_ratio=0.91 → penalty=0.91 → total *= (1 - 0.91*0.8) = 0.272
             penalty = error_ratio * 0.8  # 最多惩罚 80%
             total = total * (1.0 - penalty)
-            auth = auth * (1.0 - penalty)
-            cap = cap * (1.0 - penalty)
-            comp = comp * (1.0 - penalty)
+            if auth is not None:
+                auth = auth * (1.0 - penalty)
+            if cap is not None:
+                cap = cap * (1.0 - penalty)
+            if comp is not None:
+                comp = comp * (1.0 - penalty)
 
     return {
         "total_score": total,

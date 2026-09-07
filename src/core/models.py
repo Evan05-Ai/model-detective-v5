@@ -118,7 +118,11 @@ class CheckResultV2:
 
 @dataclass
 class DetectionReport:
-    """完整检测报告（v2.1 新增 backend_source）"""
+    """完整检测报告（v2.1 新增 backend_source）
+
+    v3.0.3: 三维分数支持 None——某维度没有任何有效检测项时（如全部被
+    预算跳过）为 None（无数据），前端显示 N/A，不再误显示 0.0。
+    """
     model: str
     protocol: Protocol
     mode: str
@@ -126,9 +130,9 @@ class DetectionReport:
     results: list[CheckResultV2]
     total_score: float                      # 加权总分 0-100
     verdict: Verdict
-    authenticity_score: float               # 真伪维度分
-    capability_score: float                 # 能力维度分
-    compliance_score: float                 # 合规维度分
+    authenticity_score: Optional[float]     # 真伪维度分（None=该维度无有效检测项）
+    capability_score: Optional[float]       # 能力维度分
+    compliance_score: Optional[float]       # 合规维度分
     total_tokens: int
     total_requests: int
     estimated_cost_usd: float

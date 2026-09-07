@@ -3,8 +3,15 @@
 
 Bug 1 修复：线程安全 - 用 threading.Lock 保护 token/request 计数
 BUG-7 修复：费用估算按模型查询官方定价
+v3.0.3：预算口径改为"请求信封"——按我方实际发出的请求内容估算 token，
+完全不依赖中转站上报的数字。背景：连续实测发现两类中转站分别以
+cache_read（Kiro 类）和普通 input/cache_creation（beiluoxi 类）上报
+数万/请求的自身系统提示开销，任何基于上报数字的预算都会被对方单方面
+打爆（反欺诈工具的检测深度不能由被检测方控制）。上报数字仅保留两个
+用途：展示对账（total_tokens）与费用兜底估算（get_billable_cost_usd）。
 """
 
+import json
 import threading
 import requests
 from dataclasses import dataclass, field
@@ -22,16 +29,11 @@ class TokenUsage:
     cache_read_input_tokens: int = 0          # 读取缓存消耗的 input tokens（打折计费）
     # v3.0.1 新增（OpenAI 格式）
     cached_tokens: int = 0                    # usage.prompt_tokens_details.cached_tokens
-    # v3.0.1: 预算扣减口径（剔除缓存读取）。None 时回退 total_tokens。
-    # 背景：Kiro/Bedrock 类中转站每次响应上报数万 cache_read tokens（上游系统提示
-    # 走缓存），缓存读取实际计价仅 ~10%，按全价计入预算会让 2-3 个请求就"耗尽"
-    # 预算，导致 10/13 检测器被跳过。
-    budget_tokens: Optional[int] = None
-
-    @property
-    def effective_budget_tokens(self) -> int:
-        """预算扣减用量：优先用 budget_tokens，未设置时回退 total_tokens"""
-        return self.total_tokens if self.budget_tokens is None else self.budget_tokens
+    # v3.0.3: 全价输入当量——按该协议真实计费折扣折算后的输入 token 数
+    # （Anthropic: input + 1.25×cache_creation + 0.1×cache_read；
+    #   OpenAI: prompt - 0.5×cached；Gemini: prompt）。0=未设置。
+    # 用于费用兜底估算，不再参与检测预算。
+    cost_input_equiv: float = 0.0
 
 
 @dataclass
@@ -63,8 +65,10 @@ class BaseProtocolClient:
         self._session_headers = {}
         self._local = threading.local()
         self._lock = threading.Lock()
-        self._total_tokens = 0
-        self._budget_tokens_count = 0   # v3.0.1: 预算口径累计（剔除缓存读取）
+        self._total_tokens = 0          # 展示口径：中转站上报的总量
+        self._envelope_tokens = 0       # v3.0.3 预算口径：我方请求信封估算
+        self._input_equiv_total = 0.0   # v3.0.3 费用口径：全价输入当量累计
+        self._output_total = 0          # v3.0.3 费用口径：输出 token 累计
         self._total_requests = 0
 
     @property
@@ -100,40 +104,78 @@ class BaseProtocolClient:
 
     def _record_usage(self, usage: Optional[TokenUsage]):
 
-        """记录 token 消耗（线程安全）"""
+        """记录 token 消耗（线程安全）。上报数字仅入展示/费用口径，不入预算。"""
         with self._lock:
             self._total_requests += 1
             if usage:
                 self._total_tokens += usage.total_tokens
-                self._budget_tokens_count += usage.effective_budget_tokens
+                self._output_total += usage.completion_tokens
+                if usage.cost_input_equiv > 0:
+                    self._input_equiv_total += usage.cost_input_equiv
+                else:
+                    self._input_equiv_total += usage.prompt_tokens
+
+    def _add_envelope(self, payload) -> int:
+        """v3.0.3: 按我方实际发出的请求 payload 估算 token 并计入预算口径。
+
+        估算 = count_tokens(json(payload))（已含 messages/tools/max_tokens）。
+        这是检测预算的唯一记账来源——中转站上报的数字不参与预算，
+        防止被检测方通过虚报用量单方面关停检测深度。
+        """
+        try:
+            from src.utils.token_counter import count_tokens
+            est = count_tokens(json.dumps(payload, ensure_ascii=False, default=str))
+        except Exception:
+            try:
+                est = len(json.dumps(payload, ensure_ascii=False, default=str)) // 4
+            except Exception:
+                est = 200
+        with self._lock:
+            self._envelope_tokens += max(est, 1)
+        return est
 
     def get_budget_tokens(self) -> int:
-        """获取预算口径的累计 token 消耗（线程安全，供 Runner 预算扣减使用）"""
-        with self._lock:
-            return self._budget_tokens_count
+        """获取预算口径的累计消耗（线程安全，供 Runner 预算扣减使用）
 
-    def get_cost_summary(self) -> dict:
-        """获取消耗摘要（线程安全）—— 按模型官方定价估算
-
-        v3.0.1: 费用估算改用预算口径（剔除缓存读取，其计价仅 ~10%），
-        避免缓存密集型中转站的费用被高估一个数量级。
+        v3.0.3: 语义改为"请求信封"——我方实际发出的请求内容估算，
+        与中转站上报无关。
         """
         with self._lock:
-            tokens = self._total_tokens
-            budget_tokens = self._budget_tokens_count
-            requests_count = self._total_requests
+            return self._envelope_tokens
+
+    def get_billable_cost_usd(self) -> float:
+        """v3.0.3: 按中转站上报口径 + 官方价折算的预估费用（钱包兜底用）。
+
+        输入按协议真实折扣折算（缓存读取/命中打折、缓存写入 1.25x），
+        输出按全价。这是"如果它如实上报且按官方价计费，你大概花多少"。
+        """
+        with self._lock:
+            input_equiv = self._input_equiv_total
+            output = self._output_total
         try:
             from src.utils.price_db import get_official_price
             price = get_official_price(self.model)
             input_price = price.get("input") or 2.5
             output_price = price.get("output") or 10.0
-            # 粗略按 60% input / 40% output 估算
-            estimated = budget_tokens * (input_price * 0.6 + output_price * 0.4) / 1_000_000
         except Exception:
-            estimated = budget_tokens * 2.5 / 1_000_000
+            input_price, output_price = 2.5, 10.0
+        return (input_equiv * input_price + output * output_price) / 1_000_000
+
+    def get_cost_summary(self) -> dict:
+        """获取消耗摘要（线程安全）
+
+        - total_tokens: 中转站上报总量（对账口径）
+        - budget_tokens: 请求信封口径（检测预算）
+        - estimated_cost_usd: 按上报口径+官方价折扣折算的预估费用
+        """
+        with self._lock:
+            tokens = self._total_tokens
+            envelope = self._envelope_tokens
+            requests_count = self._total_requests
+        estimated = self.get_billable_cost_usd()
         return {
             "total_tokens": tokens,
-            "budget_tokens": budget_tokens,
+            "budget_tokens": envelope,
             "total_requests": requests_count,
             "estimated_cost_usd": estimated,
         }
